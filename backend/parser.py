@@ -1,0 +1,198 @@
+import os
+import sqlglot
+from sqlglot import exp
+import networkx as nx
+
+import os
+import sqlglot
+from sqlglot import exp
+import networkx as nx
+import re
+
+def parse_sql_files(directory):
+    """
+    Recursively scans a directory for .sql files and parses them.
+    Returns a dictionary mapping table names to their dependencies and metadata.
+    """
+    tables = {}
+    
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if file.endswith(".sql"):
+                filepath = os.path.join(root, file)
+                # Heuristic for table name: filename without extension
+                filename_base = os.path.splitext(file)[0]
+                
+                # Layer detection based on folder structure first, then filename
+                lower_path = filepath.lower()
+                layer = "other"
+                if "bronze" in lower_path:
+                    layer = "bronze"
+                elif "silver" in lower_path:
+                    layer = "silver"
+                elif "gold" in lower_path:
+                    layer = "gold"
+                
+                with open(filepath, "r", encoding="utf-8") as f:
+                    sql_content = f.read()
+                
+                try:
+                    # Parse with BigQuery dialect to support CREATE OR REPLACE TABLE/VIEW
+                    parsed = sqlglot.parse_one(sql_content, read="bigquery")
+                    
+                    # Detect Node Type (Table or View)
+                    node_type = "table" # default
+                    if isinstance(parsed, exp.Create):
+                        if parsed.kind == "VIEW":
+                            node_type = "view"
+                    
+                    # Attempt to extract Project and Dataset from the CREATE statement
+                    # pattern: project.dataset.table or dataset.table
+                    # We look for the creation target
+                    target_table_name = filename_base
+                    project = "default"
+                    dataset = "default"
+                    
+                    create_node = parsed.find(exp.Create)
+                    if create_node and create_node.this:
+                        # sqlglot represents the target as an exp.Table or exp.Schema
+                        target_exp = create_node.this
+                        if isinstance(target_exp, exp.Table):
+                            target_table_name = target_exp.name
+                            dataset = target_exp.db or "default"
+                            project = target_exp.catalog or "default"
+                    
+                    dependencies = set()
+                    
+                    # Find all tables referenced in the query
+                    for table in parsed.find_all(exp.Table):
+                        dep_name = table.name
+                        # Construct full name if available to match lookup
+                        full_name = dep_name
+                        if table.db:
+                            full_name = f"{table.db}.{dep_name}"
+                            if table.catalog:
+                                full_name = f"{table.catalog}.{table.db}.{dep_name}"
+                        
+                        # Avoid self-reference if it matches the target
+                        if dep_name == target_table_name:
+                            continue
+                            
+                        # If we haven't found a CREATE statement, this might just be a SELECT
+                        # and we treat the filename as the target.
+                        
+                        dependencies.add(full_name)
+                        # REMOVED: partial match addition to prevent double counting in visual metadata
+                        # matches are now handled in build_graph via fuzzy lookup
+                             
+                    tables[filename_base] = { 
+                        # Use filename_base as unique ID for the graph to avoid ambiguity
+                        # Visual label can be the actual table name
+                        "id": filename_base,
+                        "label": target_table_name,
+                        "layer": layer,
+                        "type": node_type,
+                        "project": project,
+                        "dataset": dataset,
+                        "path": filepath,
+                        "dependencies": list(dependencies),
+                        "content": sql_content 
+                    }
+                except Exception as e:
+                    print(f"Error parsing {filepath}: {e}")
+                    tables[filename_base] = {
+                        "id": filename_base,
+                        "label": filename_base,
+                        "layer": layer,
+                        "type": "unknown",
+                        "project": "n/a",
+                        "dataset": "n/a",
+                        "path": filepath,
+                        "dependencies": [],
+                        "error": str(e),
+                        "content": sql_content
+                    }
+    
+    return tables
+
+
+def build_graph(tables):
+    """
+    Constructs nodes and edges for React Flow.
+    """
+    nodes = []
+    edges = []
+    
+    # Create a lookup map: identifier -> node_id
+    lookup = {}
+    
+    for node_id, data in tables.items():
+        lookup[node_id] = node_id
+        if "label" in data:
+            lookup[data["label"]] = node_id
+            
+        project = data.get("project", "default")
+        dataset = data.get("dataset", "default")
+        table = data.get("label", "")
+        
+        if table:
+             if dataset != "default":
+                 lookup[f"{dataset}.{table}"] = node_id
+                 if project != "default":
+                     lookup[f"{project}.{dataset}.{table}"] = node_id
+    
+    # Track incoming edges for accurate dependency counting
+    incoming_edges_count = {node_id: 0 for node_id in tables}
+
+    # Create edges first (conceptually) to count dependencies
+    for source_id, data in tables.items():
+        for dep in data["dependencies"]:
+            target_id = lookup.get(dep)
+            
+            # Fuzzy lookup: if exact match fails, try splitting by dot and matching last part (table name)
+            if not target_id and "." in dep:
+                short_name = dep.split(".")[-1]
+                target_id = lookup.get(short_name)
+
+            if target_id and target_id != source_id:
+                edges.append({
+                    "id": f"{target_id}-{source_id}",
+                    "source": target_id,
+                    "target": source_id,
+                    "animated": True,
+                    "style": {"stroke": "#b1b1b7"}
+                })
+                incoming_edges_count[source_id] = incoming_edges_count.get(source_id, 0) + 1
+            else:
+                 pass
+
+    # Create nodes with edge count info
+    # First, build a NetworkX graph to calculate transitive dependencies (nested deps)
+    G = nx.DiGraph()
+    for edge in edges:
+        G.add_edge(edge["source"], edge["target"])
+
+    for table_name, data in tables.items():
+        # Calculate nested dependencies (all ancestors in the dependency graph)
+        nested_count = 0
+        if G.has_node(table_name):
+            try:
+                # ancestors() returns all nodes u such that there is a path from u to table_name
+                nested_count = len(nx.ancestors(G, table_name))
+            except Exception:
+                pass # distinct graph parts or cycles? cycles shouldn't exist in DAG but safety first
+
+        nodes.append({
+            "id": table_name,
+            "data": {
+                "label": data["label"], 
+                "layer": data["layer"],
+                "details": data,
+                "incomingCount": incoming_edges_count.get(table_name, 0),
+                "nestedCount": nested_count
+            },
+            "position": {"x": 0, "y": 0}, 
+            "type": "custom", 
+        })
+
+    return nodes, edges
