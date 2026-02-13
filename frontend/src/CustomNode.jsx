@@ -2,8 +2,10 @@ import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Database, Table, FileText, Layers, Eye } from 'lucide-react';
 
-const CustomNode = ({ data }) => {
+const CustomNode = ({ id, data }) => {
     const { label, layer, details, theme = 'dark', styleMode = 'full', onContextMenu } = data;
+    // Inject id into data for easier access if needed, or just use id prop
+    data.id = id;
     const isDark = theme === 'dark';
     const isView = details?.type === 'view';
 
@@ -128,6 +130,50 @@ const CustomNode = ({ data }) => {
                     <div style={{ fontSize: '9px', marginTop: '4px', opacity: 0.6 }}>Source</div>
                 )
             )}
+
+            {/* Hover Toolbar */}
+            {onContextMenu && ( // Only show if interactive
+                <div style={{
+                    position: 'absolute',
+                    top: '-30px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: isDark ? '#333' : '#fff',
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                    display: 'flex', // Hidden by default, shown on hover via CSS
+                    gap: '4px',
+                    opacity: 0,
+                    pointerEvents: 'none',
+                    transition: 'opacity 0.2s',
+                    zIndex: 100,
+                }} className="node-toolbar">
+                    <button
+                        onClick={(e) => { e.stopPropagation(); data.onHide(data.id, 'single'); }}
+                        title="Hide Node"
+                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isDark ? '#fff' : '#000', fontSize: '10px' }}
+                    >
+                        👁️‍🗨️ Hide
+                    </button>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); data.onHide(data.id, 'tree'); }}
+                        title="Hide Node + Dependencies"
+                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isDark ? '#fff' : '#000', fontSize: '10px' }}
+                    >
+                        🌳 Hide Tree
+                    </button>
+                </div>
+            )}
+
+            <style>
+                {`
+                .react-flow__node-custom:hover .node-toolbar {
+                    opacity: 1 !important;
+                    pointer-events: auto !important;
+                }
+                `}
+            </style>
 
             <Handle type="source" position={Position.Right} style={{ background: isDark ? '#fff' : '#555' }} />
         </div>

@@ -9,14 +9,18 @@ from sqlglot import exp
 import networkx as nx
 import re
 
-def parse_sql_files(directory):
+def parse_sql_files(directory, allowed_subfolders=None):
     """
     Recursively scans a directory for .sql files and parses them.
     Returns a dictionary mapping table names to their dependencies and metadata.
     """
     tables = {}
     
-    for root, _, files in os.walk(directory):
+    for root, dirs, files in os.walk(directory):
+        # Filter subfolders if allowed_subfolders is specified
+        if allowed_subfolders is not None and root == directory:
+             dirs[:] = [d for d in dirs if d in allowed_subfolders]
+
         for file in files:
             if file.endswith(".sql"):
                 filepath = os.path.join(root, file)

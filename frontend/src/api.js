@@ -59,3 +59,31 @@ export const getPath = async () => {
         return { path: '' };
     }
 };
+
+export const scanFolders = async (path) => {
+    try {
+        const response = await fetch(`${API_URL}/scan/folders`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path }),
+        });
+        return await response.json();
+    } catch (error) {
+        console.error("Error scanning folders:", error);
+        return { folders: [] };
+    }
+};
+
+export const fetchFilteredGraph = async (subfolders) => {
+    try {
+        const response = await fetch(`${API_URL}/graph/filtered`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ subfolders }),
+        });
+        return await response.json();
+    } catch (error) {
+        console.error("Error fetching filtered graph:", error);
+        return { nodes: [], edges: [], error: "Failed to fetch graph" };
+    }
+};

@@ -39,8 +39,33 @@ def set_path(path_data: dict = Body(...)):
     if not path or not os.path.exists(path):
         raise HTTPException(status_code=400, detail="Directory does not exist")
     
+    
     CURRENT_DIRECTORY = path
     return {"message": "Path updated", "path": CURRENT_DIRECTORY}
+
+@app.post("/scan/folders")
+def scan_folders(path_data: dict = Body(...)):
+    """Scans a directory and returns immediate subfolders."""
+    path = path_data.get("path")
+    if not path or not os.path.exists(path):
+         raise HTTPException(status_code=400, detail="Directory does not exist")
+    
+    try:
+        subfolders = [f.name for f in os.scandir(path) if f.is_dir() and not f.name.startswith('.')]
+        return {"folders": subfolders}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/graph/filtered")
+def get_filtered_graph(data: dict = Body(...)):
+    """Parses SQL files with subfolder filtering."""
+    if not os.path.exists(CURRENT_DIRECTORY):
+        return {"nodes": [], "edges": [], "error": "Directory not found"}
+    
+    subfolders = data.get("subfolders") # List of strings or None
+    tables = parse_sql_files(CURRENT_DIRECTORY, allowed_subfolders=subfolders)
+    nodes, edges = build_graph(tables)
+    return {"nodes": nodes, "edges": edges}
 
 @app.get("/config/path")
 def get_path():

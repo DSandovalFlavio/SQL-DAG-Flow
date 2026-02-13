@@ -3,17 +3,19 @@ import { ReactFlow, Background, Controls, useNodesState, useEdgesState, addEdge,
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
 import { toPng } from 'html-to-image';
-import { fetchGraph, saveGraph, loadGraphState, setPath, getPath } from './api';
+import { fetchGraph, saveGraph, loadGraphState, setPath, getPath, scanFolders, fetchFilteredGraph } from './api';
 import './index.css';
 import CustomNode from './CustomNode';
 import AnnotationNode from './AnnotationNode';
+import Sidebar from './Sidebar';
+import FolderSelectorModal from './FolderSelectorModal';
+import { Menu, Layout } from 'lucide-react';
 
 // Layout function using Dagre
 const getLayoutedElements = (nodes, edges, direction = 'LR') => {
   const dagreGraph = new dagre.graphlib.Graph();
   dagreGraph.setDefaultEdgeLabel(() => ({}));
 
-  // Access the actual node dimensions effectively
   const nodeWidth = 250;
   const nodeHeight = 100;
 
@@ -57,6 +59,16 @@ const Flow = () => {
   const [currentPath, setCurrentPath] = useState('');
   const [rfInstance, setRfInstance] = useState(null);
 
+  const edgesRef = useRef([]);
+  useEffect(() => { edgesRef.current = edges; }, [edges]);
+
+  // New Features State
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [hiddenNodeIds, setHiddenNodeIds] = useState([]); // List of manually hidden node IDs
+  const [folderModalOpen, setFolderModalOpen] = useState(false);
+  const [subfolderOptions, setSubfolderOptions] = useState([]);
+  const [pendingPath, setPendingPath] = useState(null);
+
   const nodeTypes = useMemo(() => ({ custom: CustomNode, annotation: AnnotationNode }), []);
 
   const onNodeContextMenu = useCallback((event, nodeData) => {
@@ -68,14 +80,45 @@ const Flow = () => {
     setSelectedNode(nodeData);
   }, []);
 
+  // Node Hiding Logic
+  const handleHideNode = useCallback((nodeId, mode) => {
+    if (mode === 'single') {
+      setHiddenNodeIds(prev => [...new Set([...prev, nodeId])]);
+    } else if (mode === 'tree') {
+      // Hide node and all manual dependencies (upstream)
+      // Actually, usually "Hide Tree" implies hiding what feeds into it? Or what it feeds?
+      // "Dependencies" usually means parents.
+      const ancestors = new Set();
+      const queue = [nodeId];
+      // Build graph map for faster lookup if needed, but edges list is fine for small graphs
+      // We need to traverse edges where target is current node
+
+      while (queue.length > 0) {
+        const curr = queue.shift();
+        ancestors.add(curr);
+        const incoming = edgesRef.current.filter(e => e.target === curr);
+        incoming.forEach(e => {
+          if (!ancestors.has(e.source)) queue.push(e.source);
+        });
+      }
+      setHiddenNodeIds(prev => [...new Set([...prev, ...ancestors])]);
+    }
+  }, []); // using edgesRef to avoid dependency loop
+
+  const toggleNodeVisibility = useCallback((nodeId) => {
+    setHiddenNodeIds(prev => prev.includes(nodeId) ? prev.filter(id => id !== nodeId) : [...prev, nodeId]);
+  }, []);
+
   const [visibleLayers, setVisibleLayers] = useState({ bronze: true, silver: true, gold: true, other: true });
   const [showCounts, setShowCounts] = useState(true);
 
-  // Update nodes when theme, nodeStyle, palette, or visibleLayers changes
+  // Update nodes when theme, nodeStyle, palette, or visibleLayers OR hiddenNodeIds changes
   useEffect(() => {
     setNodes((nds) =>
       nds.map((node) => {
-        const isHidden = !visibleLayers[node.data.layer || 'other'];
+        const isLayerVisible = visibleLayers[node.data.layer || 'other'];
+        const isManuallyHidden = hiddenNodeIds.includes(node.id);
+        const isHidden = !isLayerVisible || isManuallyHidden;
 
         let updatedNode = {
           ...node,
@@ -89,7 +132,8 @@ const Flow = () => {
             styleMode: nodeStyle,
             palette,
             showCounts,
-            onContextMenu: onNodeContextMenu
+            onContextMenu: onNodeContextMenu,
+            onHide: handleHideNode // Pass hide handler
           };
         } else if (node.type === 'annotation') {
           updatedNode.data = {
@@ -102,69 +146,59 @@ const Flow = () => {
       })
     );
 
-    // Also update edges to hide them if connected nodes are hidden
-    setEdges((eds) =>
-      eds.map(edge => {
-        // We need to check if source or target nodes are hidden.
-        // However, edges don't know about nodes' hidden state directly here without looking up nodes.
-        // But since we are setting visibility based on layers, we can look up the source/target layer provided we have that info?
-        // Actually, React Flow hides edges connected to hidden nodes automatically if using the default Edge component? 
-        // Let's force it to be sure.
-        // Problem: We don't have easy access to source/target node data here efficiently without a lookup map.
-        // BUT: React Flow 11+ (xyflow) usually handles this. Let's try just updating nodes first. 
-        // If edges remain floating, we will filter them. 
-        // Actually, simply adding 'hidden' to the edge if the node is hidden is best.
-        // Let's leave edges alone for a moment, React Flow usually handles this.
-        return edge;
-      })
-    );
 
-  }, [theme, nodeStyle, palette, visibleLayers, showCounts, setNodes, onNodeContextMenu, onEdit, setEdges]);
 
-  // Initial Load: Try to load state, otherwise fetch graph
+  }, [theme, nodeStyle, palette, visibleLayers, showCounts, hiddenNodeIds, setNodes, onNodeContextMenu, onEdit, handleHideNode]);
+
+  // Initial Load
   useEffect(() => {
     const init = async () => {
-      // 1. Get current path
       const pathData = await getPath();
       if (pathData.path) setCurrentPath(pathData.path);
 
-      // 2. Try to load saved state
       const savedState = await loadGraphState();
-
       if (savedState && savedState.nodes && savedState.nodes.length > 0) {
-        // Restore state
-        const restoredNodes = (savedState.nodes || []).map(n => ({
+        setNodes(savedState.nodes.map(n => ({
           ...n,
-          hidden: !visibleLayers[n.data.layer || 'other'], // Apply current filter on load
+          hidden: !visibleLayers[n.data.layer || 'other'] || (savedState.metadata?.hiddenNodeIds || []).includes(n.id),
           data: {
             ...n.data,
             onContextMenu: n.type === 'custom' ? onNodeContextMenu : undefined,
             onEdit: n.type === 'annotation' ? onEdit : undefined,
-            theme,
-            styleMode: nodeStyle,
-            palette,
-            showCounts // Include showCounts
+            onHide: n.type === 'custom' ? handleHideNode : undefined,
+            theme, styleMode: nodeStyle, palette, showCounts
           }
-        }));
-        setNodes(restoredNodes);
+        })));
         setEdges(savedState.edges || []);
         if (savedState.metadata) {
           setTheme(savedState.metadata.theme || 'dark');
           setNodeStyle(savedState.metadata.nodeStyle || 'full');
           setPalette(savedState.metadata.palette || 'standard');
-          setTitle(savedState.metadata.title || "SQL Architect");
+          setTitle(savedState.metadata.title || "SQL DAG Flow");
           setSubtitle(savedState.metadata.subtitle || "Medallion Architecture Visualizer");
+          if (savedState.metadata.hiddenNodeIds) setHiddenNodeIds(savedState.metadata.hiddenNodeIds);
         }
       } else {
         await refreshGraphData();
       }
     };
     init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, []);
 
-  const refreshGraphData = async () => {
-    const data = await fetchGraph();
+  const refreshGraphData = async (subfolders = null) => {
+    // If subfolders is null, it typically means fetch all or standard behavior
+    // For now we use the filtered endpoint if subfolders is passed, or standard if not?
+    // Actually standard fetchGraph doesn't support subfolders argument in my previous implementation?
+    // Let's use fetchFilteredGraph if subfolders is an array, else fetchGraph
+
+    let data;
+    if (subfolders) {
+      data = await fetchFilteredGraph(subfolders);
+    } else {
+      data = await fetchGraph();
+    }
+
     if (data.error) return;
 
     const styledNodes = data.nodes.map(node => ({
@@ -192,7 +226,7 @@ const Flow = () => {
     if (rfInstance) {
       const flow = rfInstance.toObject();
       const stateToSave = {
-        nodes: nodes, // Save current nodes (includes positions)
+        nodes: nodes,
         edges: edges,
         viewport: flow.viewport,
         metadata: {
@@ -201,7 +235,8 @@ const Flow = () => {
           palette,
           title,
           subtitle,
-          path: currentPath
+          path: currentPath,
+          hiddenNodeIds // Save hidden state
         }
       };
       await saveGraph(stateToSave);
@@ -215,7 +250,6 @@ const Flow = () => {
       id,
       type: 'annotation',
       position: { x: 100, y: 100 },
-      // Set zIndex low for groups so they appear behind nodes
       zIndex: type === 'group' ? -1 : 10,
       data: {
         label: type === 'group' ? 'Group Name' : 'Comment...',
@@ -239,20 +273,13 @@ const Flow = () => {
 
   const downloadImage = () => {
     if (!exportRef.current) return;
-
-    // 1. Hide UI elements
     setIsExporting(true);
-
-    // 2. Wait for render to update (short delay)
     setTimeout(() => {
       toPng(exportRef.current, {
         backgroundColor: theme === 'dark' ? '#111' : '#f5f5f5',
         width: exportRef.current.offsetWidth,
         height: exportRef.current.offsetHeight,
-        style: {
-          width: '100%',
-          height: '100%',
-        }
+        style: { width: '100%', height: '100%' }
       })
         .then((dataUrl) => {
           const a = document.createElement('a');
@@ -261,47 +288,45 @@ const Flow = () => {
           a.click();
         })
         .catch(console.error)
-        .finally(() => {
-          // 3. Show UI elements again
-          setIsExporting(false);
-        });
+        .finally(() => setIsExporting(false));
     }, 100);
   };
 
   const handleChangePath = async () => {
     const newPath = prompt("Enter full path to SQL project folder:", currentPath);
     if (newPath && newPath !== currentPath) {
-      const res = await setPath(newPath);
-      if (res.path) {
-        setCurrentPath(res.path);
-
-        // Try to load state first
-        const savedState = await loadGraphState();
-        if (savedState && savedState.nodes && savedState.nodes.length > 0) {
-          // Restore state logic (copy-pasted from initial load slightly adapted)
-          const restoredNodes = (savedState.nodes || []).map(n => ({
-            ...n,
-            data: {
-              ...n.data,
-              onContextMenu: n.type === 'custom' ? onNodeContextMenu : undefined,
-              onEdit: n.type === 'annotation' ? onEdit : undefined,
-              theme,
-              styleMode: nodeStyle,
-              palette
-            }
-          }));
-          setNodes(restoredNodes);
-          setEdges(savedState.edges || []);
-          if (savedState.metadata) {
-            setTitle(savedState.metadata.title || title);
-            setSubtitle(savedState.metadata.subtitle || subtitle);
-          }
-        } else {
-          await refreshGraphData();
-        }
+      // 1. Scan folders first
+      const folderData = await scanFolders(newPath);
+      if (folderData.folders && folderData.folders.length > 0) {
+        setSubfolderOptions(folderData.folders);
+        setPendingPath(newPath);
+        setFolderModalOpen(true);
       } else {
-        alert("Error setting path");
+        // No subfolders, just set path and refresh
+        await executeSetPath(newPath, null);
       }
+    }
+  };
+
+  const executeSetPath = async (path, subfolders) => {
+    const res = await setPath(path);
+    if (res.path) {
+      setCurrentPath(res.path);
+      setNodes([]);
+      setEdges([]);
+      setHiddenNodeIds([]);
+      // Try to load state or refresh
+      await refreshGraphData(subfolders);
+    } else {
+      alert("Error setting path");
+    }
+  };
+
+  const handleModalConfirm = async (selectedFolders) => {
+    setFolderModalOpen(false);
+    if (pendingPath) {
+      await executeSetPath(pendingPath, selectedFolders);
+      setPendingPath(null);
     }
   };
 
@@ -311,18 +336,8 @@ const Flow = () => {
   const textColor = theme === 'dark' ? '#fff' : '#000';
   const borderColor = theme === 'dark' ? '#444' : '#ddd';
 
-  // Light mode fix for controls
-  const controlsStyle = {
-    button: {
-      backgroundColor: theme === 'dark' ? '#333' : '#fff',
-      color: theme === 'dark' ? '#fff' : '#000',
-      borderBottom: `1px solid ${theme === 'dark' ? '#444' : '#eee'}`,
-    }
-  };
-
   return (
-    <div ref={exportRef} style={{ width: '100vw', height: '100vh', background: bg, transition: 'background 0.3s', position: 'relative' }}>
-      {/* Global Styles for Controls in Light Mode */}
+    <div ref={exportRef} style={{ width: '100vw', height: '100vh', background: bg, transition: 'background 0.3s', position: 'relative', overflow: 'hidden' }}>
       <style>
         {`
             .react-flow__controls-button {
@@ -340,7 +355,28 @@ const Flow = () => {
             `}
       </style>
 
-      {/* Editable Title / Subtitle */}
+      {/* Sidebar */}
+      {sidebarOpen && (
+        <Sidebar
+          nodes={nodes}
+          hiddenNodeIds={hiddenNodeIds}
+          toggleNodeVisibility={toggleNodeVisibility}
+          onClose={() => setSidebarOpen(false)}
+          theme={theme}
+        />
+      )}
+
+      {/* Folder Selection Modal */}
+      <FolderSelectorModal
+        isOpen={folderModalOpen}
+        currentPath={pendingPath}
+        subfolders={subfolderOptions}
+        onConfirm={handleModalConfirm}
+        onCancel={() => { setFolderModalOpen(false); executeSetPath(pendingPath, null); }} // If interactions canceled, just load all? Or standardload? Let's assume standard load
+        theme={theme}
+      />
+
+      {/* Editable Title */}
       <div style={{
         position: 'absolute',
         top: 20,
@@ -354,33 +390,21 @@ const Flow = () => {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           style={{
-            background: 'transparent',
-            border: 'none',
-            color: textColor,
-            fontSize: '24px',
-            fontWeight: '800',
-            letterSpacing: '-0.5px',
-            width: '400px',
-            outline: 'none',
-            marginBottom: '4px'
+            background: 'transparent', border: 'none', color: textColor,
+            fontSize: '24px', fontWeight: '800', letterSpacing: '-0.5px', width: '400px', outline: 'none', marginBottom: '4px'
           }}
         />
         <input
           value={subtitle}
           onChange={(e) => setSubtitle(e.target.value)}
           style={{
-            background: 'transparent',
-            border: 'none',
-            color: textColor,
-            opacity: 0.6,
-            fontSize: '14px',
-            width: '400px',
-            outline: 'none'
+            background: 'transparent', border: 'none', color: textColor,
+            opacity: 0.6, fontSize: '14px', width: '400px', outline: 'none'
           }}
         />
       </div>
 
-      {/* Floating Ribbon at Bottom - Hidden during export */}
+      {/* Floating Ribbon */}
       {!isExporting && (
         <div style={{
           position: 'absolute',
@@ -398,6 +422,18 @@ const Flow = () => {
           gap: '12px',
           boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
         }}>
+          <button
+            onClick={() => setSidebarOpen(true)}
+            title="Open Node Sidebar"
+            style={{
+              background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', color: textColor
+            }}
+          >
+            <Menu size={20} />
+          </button>
+
+          <div style={{ width: 1, height: 20, background: borderColor }}></div>
+
           <button
             onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
             title="Toggle Theme"
@@ -438,7 +474,6 @@ const Flow = () => {
           >
             🖌️ {palette.charAt(0).toUpperCase() + palette.slice(1)}
           </button>
-
 
           <div style={{ width: 1, height: 20, background: borderColor }}></div>
 
@@ -492,34 +527,19 @@ const Flow = () => {
         </div>
       )}
 
-      {/* Side Panel for Node Details & Annotation Actions */}
+      {/* Side Panel for Node Details */}
       {selectedNode && !isExporting && (
         <div style={{
-          position: 'absolute',
-          top: 0,
-          right: 0,
-          width: '400px',
-          height: '100%',
-          background: theme === 'dark' ? '#1a1a1a' : '#fff',
-          borderLeft: `1px solid ${borderColor}`,
-          zIndex: 20,
-          padding: '20px',
-          boxSizing: 'border-box',
-          overflowY: 'auto',
-          boxShadow: '-5px 0 30px rgba(0,0,0,0.3)',
-          transform: 'translateX(0)',
-          transition: 'transform 0.3s ease'
+          position: 'absolute', top: 0, right: 0, width: '400px', height: '100%',
+          background: theme === 'dark' ? '#1a1a1a' : '#fff', borderLeft: `1px solid ${borderColor}`,
+          zIndex: 20, padding: '20px', boxSizing: 'border-box', overflowY: 'auto',
+          boxShadow: '-5px 0 30px rgba(0,0,0,0.3)'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h2 style={{ margin: 0, color: textColor, fontSize: '18px' }}>
               {selectedNode.type === 'annotation' ? (selectedNode.data.isGroup ? 'Group Settings' : 'Note Settings') : 'Node Details'}
             </h2>
-            <button
-              onClick={() => setSelectedNode(null)}
-              style={{ background: 'transparent', border: 'none', color: textColor, fontSize: '24px', cursor: 'pointer' }}
-            >
-              ×
-            </button>
+            <button onClick={() => setSelectedNode(null)} style={{ background: 'transparent', border: 'none', color: textColor, fontSize: '24px', cursor: 'pointer' }}>×</button>
           </div>
 
           {selectedNode.type === 'annotation' ? (
@@ -527,58 +547,37 @@ const Flow = () => {
               <div style={{ marginBottom: '20px' }}>
                 <label style={{ display: 'block', fontSize: '12px', opacity: 0.6, color: textColor, marginBottom: '8px' }}>Content</label>
                 <textarea
-                  value={selectedNode.data.label}
+                  value={selectedNode.label}
                   onChange={(e) => {
                     const val = e.target.value;
                     setNodes(nds => nds.map(n => n.id === selectedNode.id ? { ...n, data: { ...n.data, label: val } } : n));
-                    // Update selected node state immediately to reflect in input
-                    setSelectedNode(curr => ({ ...curr, data: { ...curr.data, label: val } }));
+                    setSelectedNode(curr => ({ ...curr, label: val }));
                   }}
-                  style={{
-                    width: '100%',
-                    height: '100px',
-                    background: theme === 'dark' ? '#333' : '#eee',
-                    border: 'none',
-                    color: textColor,
-                    padding: '10px',
-                    borderRadius: '8px',
-                    resize: 'vertical'
-                  }}
+                  style={{ width: '100%', height: '100px', background: theme === 'dark' ? '#333' : '#eee', border: 'none', color: textColor, padding: '10px', borderRadius: '8px', resize: 'vertical' }}
                 />
               </div>
-
-              {!selectedNode.data.isGroup && (
+              {!selectedNode.isGroup && (
                 <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <input
                     type="checkbox"
-                    checked={selectedNode.data.transparent}
+                    checked={selectedNode.transparent}
                     onChange={(e) => {
                       const checked = e.target.checked;
                       setNodes(nds => nds.map(n => n.id === selectedNode.id ? { ...n, data: { ...n.data, transparent: checked } } : n));
-                      setSelectedNode(curr => ({ ...curr, data: { ...curr.data, transparent: checked } }));
+                      setSelectedNode(curr => ({ ...curr, transparent: checked }));
                     }}
                   />
                   <label style={{ color: textColor, fontSize: '14px' }}>Transparent Background</label>
                 </div>
               )}
-
               <button
                 onClick={() => {
                   setNodes(nds => nds.filter(n => n.id !== selectedNode.id));
                   setSelectedNode(null);
                 }}
-                style={{
-                  padding: '10px 20px',
-                  background: '#ff4444',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontWeight: '600',
-                  width: '100%'
-                }}
+                style={{ padding: '10px 20px', background: '#ff4444', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', width: '100%' }}
               >
-                🗑️ Delete {selectedNode.data.isGroup ? 'Group' : 'Note'}
+                🗑️ Delete {selectedNode.isGroup ? 'Group' : 'Note'}
               </button>
             </div>
           ) : (
@@ -610,15 +609,9 @@ const Flow = () => {
               <div style={{ marginBottom: '10px', fontSize: '12px', opacity: 0.6, color: textColor }}>SQL Content</div>
               <div style={{
                 background: theme === 'dark' ? '#111' : '#f9f9f9',
-                padding: '15px',
-                borderRadius: '8px',
-                overflowX: 'auto',
-                border: `1px solid ${borderColor}`,
-                fontSize: '12px',
-                fontFamily: 'monospace',
-                whiteSpace: 'pre-wrap',
-                color: textColor,
-                lineHeight: 1.5
+                padding: '15px', borderRadius: '8px', overflowX: 'auto',
+                border: `1px solid ${borderColor}`, fontSize: '12px', fontFamily: 'monospace',
+                whiteSpace: 'pre-wrap', color: textColor, lineHeight: 1.5
               }}>
                 {selectedNode.details?.content || 'No content found.'}
               </div>
