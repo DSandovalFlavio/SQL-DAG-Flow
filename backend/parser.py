@@ -50,6 +50,28 @@ def parse_sql_files(directory, allowed_subfolders=None):
              
              dirs[:] = allowed_dirs
 
+        # Check if the current directory is valid for file parsing
+        # We only parse files if we are IN a selected folder or a SUBFOLDER of a selected folder.
+        # We do NOT parse files if we are just traversing a PARENT folder to get to a selected one.
+        should_parse_files = True
+        if allowed_subfolders is not None:
+            should_parse_files = False
+            rel_root_check = os.path.relpath(root, directory).replace(os.sep, '/')
+            if rel_root_check == ".": rel_root_check = ""
+            
+            for allowed in allowed_subfolders:
+                # 1. Exact match
+                if rel_root_check == allowed:
+                    should_parse_files = True
+                    break
+                # 2. Child of allowed (e.g. allowed="A", rel_root="A/B")
+                if rel_root_check.startswith(allowed + '/'):
+                    should_parse_files = True
+                    break
+        
+        if not should_parse_files:
+            continue
+
         for file in files:
             if file.endswith(".sql"):
                 filepath = os.path.join(root, file)
