@@ -45,13 +45,28 @@ def set_path(path_data: dict = Body(...)):
 
 @app.post("/scan/folders")
 def scan_folders(path_data: dict = Body(...)):
-    """Scans a directory and returns immediate subfolders."""
+    """Scans a directory and returns all subfolders (recursive, relative paths)."""
     path = path_data.get("path")
     if not path or not os.path.exists(path):
          raise HTTPException(status_code=400, detail="Directory does not exist")
     
     try:
-        subfolders = [f.name for f in os.scandir(path) if f.is_dir() and not f.name.startswith('.')]
+        subfolders = []
+        # Walk the directory tree
+        for root, dirs, files in os.walk(path):
+            # Skip hidden folders
+            dirs[:] = [d for d in dirs if not d.startswith('.')]
+            
+            for d in dirs:
+                # Create relative path from the root path
+                full_path = os.path.join(root, d)
+                rel_path = os.path.relpath(full_path, path)
+                # Normalize separators to forward slashes for consistency
+                rel_path = rel_path.replace(os.sep, '/')
+                subfolders.append(rel_path)
+                
+        # Sort for better UX
+        subfolders.sort()
         return {"folders": subfolders}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

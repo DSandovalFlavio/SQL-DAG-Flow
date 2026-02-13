@@ -2,7 +2,7 @@ import React, { useEffect, useCallback, useMemo, useRef, useState } from 'react'
 import { ReactFlow, Background, Controls, useNodesState, useEdgesState, addEdge, MiniMap, useReactFlow, Panel } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
-import { toPng } from 'html-to-image';
+import { toPng, toSvg } from 'html-to-image';
 import { fetchGraph, saveGraph, loadGraphState, setPath, getPath, scanFolders, fetchFilteredGraph } from './api';
 import './index.css';
 import CustomNode from './CustomNode';
@@ -146,9 +146,56 @@ const Flow = () => {
       })
     );
 
+    setEdges((eds) =>
+      eds.map(edge => {
+        const isIncoming = selectedNode && edge.target === selectedNode.id;
+        const isOutgoing = selectedNode && edge.source === selectedNode.id;
 
+        let stroke = '#b1b1b7'; // Default gray
+        let strokeWidth = 1;
+        let opacity = 1;
+        let animated = false;
 
-  }, [theme, nodeStyle, palette, visibleLayers, showCounts, hiddenNodeIds, setNodes, onNodeContextMenu, onEdit, handleHideNode]);
+        if (selectedNode) {
+          if (isIncoming) {
+            // Incoming (dependency)
+            stroke = theme === 'dark' ? '#00b4d8' : '#0077b6'; // Cyan-Blue / Dark Blue
+            strokeWidth = 3;
+            opacity = 1;
+            animated = true;
+          } else if (isOutgoing) {
+            // Outgoing (impact)
+            stroke = theme === 'dark' ? '#ff4d6d' : '#c9184a'; // Soft Pink / Deep Red
+            strokeWidth = 3;
+            opacity = 1;
+            animated = true;
+          } else {
+            opacity = 0.1; // Dim unrelated
+            stroke = '#555';
+            animated = false;
+          }
+        } else {
+          // Default state (no selection) - keep edges subtle but visible
+          stroke = theme === 'dark' ? '#555' : '#b1b1b7';
+          opacity = theme === 'dark' ? 0.6 : 0.8;
+          animated = false;
+        }
+
+        return {
+          ...edge,
+          animated,
+          zIndex: (isIncoming || isOutgoing) ? 10 : 0,
+          style: {
+            ...edge.style,
+            stroke,
+            strokeWidth,
+            opacity
+          }
+        };
+      })
+    );
+
+  }, [theme, nodeStyle, palette, visibleLayers, showCounts, hiddenNodeIds, setNodes, onNodeContextMenu, onEdit, handleHideNode, setEdges, selectedNode]);
 
   // Initial Load
   useEffect(() => {
@@ -279,11 +326,33 @@ const Flow = () => {
         backgroundColor: theme === 'dark' ? '#111' : '#f5f5f5',
         width: exportRef.current.offsetWidth,
         height: exportRef.current.offsetHeight,
-        style: { width: '100%', height: '100%' }
+        style: { width: '100%', height: '100%' },
+        pixelRatio: 3 // High Resolution
       })
         .then((dataUrl) => {
           const a = document.createElement('a');
           a.setAttribute('download', 'sql-architecture.png');
+          a.setAttribute('href', dataUrl);
+          a.click();
+        })
+        .catch(console.error)
+        .finally(() => setIsExporting(false));
+    }, 100);
+  };
+
+  const downloadSVG = () => {
+    if (!exportRef.current) return;
+    setIsExporting(true);
+    setTimeout(() => {
+      toSvg(exportRef.current, {
+        backgroundColor: theme === 'dark' ? '#111' : '#f5f5f5',
+        width: exportRef.current.offsetWidth,
+        height: exportRef.current.offsetHeight,
+        style: { width: '100%', height: '100%' }
+      })
+        .then((dataUrl) => {
+          const a = document.createElement('a');
+          a.setAttribute('download', 'sql-architecture.svg');
           a.setAttribute('href', dataUrl);
           a.click();
         })
@@ -523,7 +592,8 @@ const Flow = () => {
 
           <button onClick={handleChangePath} title="Change Folder Path" style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '18px' }}>📂</button>
           <button onClick={handleSave} title="Save Diagram" style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '18px' }}>💾</button>
-          <button onClick={downloadImage} title="Export PNG" style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '18px' }}>📷</button>
+          <button onClick={downloadImage} title="Export PNG (HD)" style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '18px' }}>📷</button>
+          <button onClick={downloadSVG} title="Export SVG" style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '18px' }}>📐</button>
         </div>
       )}
 
@@ -626,6 +696,7 @@ const Flow = () => {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onNodeClick={(event, node) => setSelectedNode(prev => (prev && prev.id === node.id) ? null : node.data)} // Toggle selection
         nodeTypes={nodeTypes}
         fitView
         colorMode={theme}

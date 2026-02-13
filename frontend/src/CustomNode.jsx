@@ -135,34 +135,41 @@ const CustomNode = ({ id, data }) => {
             {onContextMenu && ( // Only show if interactive
                 <div style={{
                     position: 'absolute',
-                    top: '-30px',
+                    bottom: '100%', // Position above the node
                     left: '50%',
                     transform: 'translateX(-50%)',
-                    background: isDark ? '#333' : '#fff',
-                    padding: '4px 8px',
-                    borderRadius: '4px',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                    paddingBottom: '10px', // Invisible bridge area to prevent mouseleave
                     display: 'flex', // Hidden by default, shown on hover via CSS
-                    gap: '4px',
+                    flexDirection: 'column', // Stack bridge and content vertically (though bridge is padding)
+                    alignItems: 'center',
                     opacity: 0,
                     pointerEvents: 'none',
                     transition: 'opacity 0.2s',
                     zIndex: 100,
                 }} className="node-toolbar">
-                    <button
-                        onClick={(e) => { e.stopPropagation(); data.onHide(data.id, 'single'); }}
-                        title="Hide Node"
-                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isDark ? '#fff' : '#000', fontSize: '10px' }}
-                    >
-                        👁️‍🗨️ Hide
-                    </button>
-                    <button
-                        onClick={(e) => { e.stopPropagation(); data.onHide(data.id, 'tree'); }}
-                        title="Hide Node + Dependencies"
-                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isDark ? '#fff' : '#000', fontSize: '10px' }}
-                    >
-                        🌳 Hide Tree
-                    </button>
+                    <div style={{
+                        background: isDark ? '#333' : '#fff',
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                        display: 'flex',
+                        gap: '4px',
+                    }}>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); data.onHide(data.id, 'single'); }}
+                            title="Hide Node"
+                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isDark ? '#fff' : '#000', fontSize: '10px' }}
+                        >
+                            👁️‍🗨️ Hide
+                        </button>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); data.onHide(data.id, 'tree'); }}
+                            title="Hide Node + Dependencies"
+                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isDark ? '#fff' : '#000', fontSize: '10px' }}
+                        >
+                            🌳 Hide Tree
+                        </button>
+                    </div>
                 </div>
             )}
 

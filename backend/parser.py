@@ -18,8 +18,37 @@ def parse_sql_files(directory, allowed_subfolders=None):
     
     for root, dirs, files in os.walk(directory):
         # Filter subfolders if allowed_subfolders is specified
-        if allowed_subfolders is not None and root == directory:
-             dirs[:] = [d for d in dirs if d in allowed_subfolders]
+        if allowed_subfolders is not None:
+             # allowed_subfolders contains relative paths like "sub1", "sub1/nested"
+             # We must prune 'dirs' so we only traverse relevant paths.
+             
+             rel_root = os.path.relpath(root, directory).replace(os.sep, '/')
+             if rel_root == ".": rel_root = ""
+             
+             allowed_dirs = []
+             for d in dirs:
+                 rel_d = f"{rel_root}/{d}" if rel_root else d
+                 # Keep 'd' if:
+                 # 1. rel_d is exactly one of the allowed paths
+                 # 2. rel_d is a parent of an allowed path (e.g. 'sub1' parent of 'sub1/nested')
+                 # 3. rel_d is inside an allowed path (e.g. 'sub1/nested' inside 'sub1' which is allowed)
+                 
+                 is_allowed = False
+                 for allowed in allowed_subfolders:
+                     if rel_d == allowed:
+                         is_allowed = True
+                         break
+                     if allowed.startswith(rel_d + '/'): # rel_d is parent
+                         is_allowed = True
+                         break
+                     if rel_d.startswith(allowed + '/'): # rel_d is child
+                         is_allowed = True
+                         break
+                 
+                 if is_allowed:
+                     allowed_dirs.append(d)
+             
+             dirs[:] = allowed_dirs
 
         for file in files:
             if file.endswith(".sql"):
@@ -30,7 +59,7 @@ def parse_sql_files(directory, allowed_subfolders=None):
                 # Layer detection based on folder structure first, then filename
                 lower_path = filepath.lower()
                 layer = "other"
-                if "bronze" in lower_path:
+                if "bronze" in lower_path or "bronce" in lower_path:
                     layer = "bronze"
                 elif "silver" in lower_path:
                     layer = "silver"
@@ -65,6 +94,25 @@ def parse_sql_files(directory, allowed_subfolders=None):
                             target_table_name = target_exp.name
                             dataset = target_exp.db or "default"
                             project = target_exp.catalog or "default"
+
+                    # Fallback: Extract from filename (project.dataset.table.sql)
+                    if project == "default" and dataset == "default":
+                        parts = filename_base.split('.')
+                        if len(parts) == 3:
+                            project, dataset, target_table_name = parts
+                        elif len(parts) == 2:
+                            dataset, target_table_name = parts
+                    
+                    # Fallback: Extract from directory structure if straightforward
+                    # e.g. /project/dataset/table.sql
+                    if project == "default" and dataset == "default":
+                         path_parts = os.path.normpath(filepath).split(os.sep)
+                         # Simple heuristic: parent dir is dataset, grandparent is project? 
+                         # This is risky without strict structure, so maybe just stick to filename for now.
+                         # Or just capture parent folder as dataset if it's not the layer name
+                         parent_dir = path_parts[-2] if len(path_parts) > 1 else ""
+                         if parent_dir.lower() not in ["bronze", "bronce", "silver", "gold", "other"] and dataset == "default":
+                             dataset = parent_dir
                     
                     dependencies = set()
                     
