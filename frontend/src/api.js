@@ -1,8 +1,9 @@
 const API_URL = 'http://localhost:8000';
 
-export const fetchGraph = async () => {
+export const fetchGraph = async (config) => {
     try {
-        const response = await fetch(`${API_URL}/graph`);
+        const queryParams = new URLSearchParams(config).toString();
+        const response = await fetch(`${API_URL}/graph?${queryParams}`);
         if (!response.ok) throw new Error("Failed to fetch graph");
         return await response.json();
     } catch (error) {
@@ -25,16 +26,29 @@ export const saveGraph = async (data) => {
     }
 };
 
-export const loadGraphState = async () => {
+export const loadGraphState = async (path = ".", filename = "sql_diagram.json") => {
     try {
-        const response = await fetch(`${API_URL}/load`);
-        if (!response.ok) return {};
+        const response = await fetch(`${API_URL}/load?path=${encodeURIComponent(path)}&filename=${encodeURIComponent(filename)}`);
+        if (!response.ok) return { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } };
         return await response.json();
     } catch (error) {
         console.error(error);
-        return {};
+        return { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } };
     }
 };
+
+export const fetchConfigFiles = async (path = ".") => {
+    try {
+        const response = await fetch(`${API_URL}/config_files?path=${encodeURIComponent(path)}`);
+        if (!response.ok) return { files: [] };
+        return await response.json();
+    } catch (error) {
+        console.error(error);
+        return { files: [] };
+    }
+};
+
+
 
 export const setPath = async (path) => {
     try {

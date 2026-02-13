@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Body
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import os
@@ -86,29 +87,67 @@ def get_filtered_graph(data: dict = Body(...)):
 def get_path():
     return {"path": CURRENT_DIRECTORY}
 
+class SaveRequest(BaseModel):
+    nodes: list
+    edges: list
+    viewport: dict
+    metadata: dict
+    filename: str = "sql_diagram.json" # Default filename
+
 @app.post("/save")
-def save_state(data: dict = Body(...)):
-    """Saves the current diagram state to sql_diagram.json in the current directory."""
+def save_graph(request: SaveRequest):
     try:
-        file_path = os.path.join(CURRENT_DIRECTORY, DIAGRAM_FILE)
-        with open(file_path, 'w') as f:
-            json.dump(data, f, indent=2)
-        return {"message": f"Saved to {file_path}"}
+        # Use the path from metadata if available, otherwise default
+        path = request.metadata.get("path", ".")
+        if not os.path.isabs(path):
+             path = os.path.abspath(path)
+        
+        filepath = os.path.join(path, request.filename)
+        
+        data = {
+            "nodes": request.nodes,
+            "edges": request.edges,
+            "viewport": request.viewport,
+            "metadata": request.metadata
+        }
+        with open(filepath, "w") as f:
+            json.dump(data, f, indent=4)
+        return {"message": f"Graph saved successfully to {filepath}"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/load")
-def load_state():
-    """Loads the diagram state if it exists."""
-    file_path = os.path.join(CURRENT_DIRECTORY, DIAGRAM_FILE)
-    if os.path.exists(file_path):
-        try:
-            with open(file_path, 'r') as f:
-                data = json.load(f)
-            return data
-        except Exception as e:
-             return {}
-    return {} # Return empty object if no save file
+def load_graph(path: str = ".", filename: str = "sql_diagram.json"):
+    try:
+        if not os.path.isabs(path):
+             path = os.path.abspath(path)
+        
+        filepath = os.path.join(path, filename)
+        
+        if not os.path.exists(filepath):
+            return {"nodes": [], "edges": [], "viewport": {"x": 0, "y": 0, "zoom": 1}, "metadata": {}}
+        
+        with open(filepath, "r") as f:
+            data = json.load(f)
+        return data
+    except Exception as e:
+        print(f"Error loading graph: {e}")
+        return {"nodes": [], "edges": [], "viewport": {"x": 0, "y": 0, "zoom": 1}, "metadata": {}}
+
+@app.get("/config_files")
+def list_config_files(path: str = "."):
+    try:
+        if not os.path.isabs(path):
+             path = os.path.abspath(path)
+        
+        if not os.path.exists(path):
+            return {"files": []}
+
+        files = [f for f in os.listdir(path) if f.endswith(".json") and os.path.isfile(os.path.join(path, f))]
+        return {"files": files}
+    except Exception as e:
+        print(f"Error listing config files: {e}")
+        return {"files": []}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -1,5 +1,88 @@
-import React, { useState, useEffect } from 'react';
-import { Folder, Check, X } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Folder, Check, ChevronRight, ChevronDown } from 'lucide-react';
+
+const FolderTreeItem = ({ node, selectedFolders, onToggle, theme, level = 0 }) => {
+    const [expanded, setExpanded] = useState(level < 1); // Expand top level by default
+    const hasChildren = node.children && node.children.length > 0;
+
+    // Check status
+    const isChecked = selectedFolders.includes(node.path);
+
+    // Check if some children are checked (for indeterminate visually - optional, but let's stick to simple first)
+    // Actually, simple logic: if I check a folder, I want to include it.
+
+    const isDark = theme === 'dark';
+    const textColor = isDark ? '#ffffff' : '#000000';
+    const hoverColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+
+    const handleToggle = (e) => {
+        e.stopPropagation();
+        onToggle(node);
+    };
+
+    return (
+        <div>
+            <div
+                onClick={() => setExpanded(!expanded)}
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '4px 8px',
+                    paddingLeft: `${level * 20 + 8}px`,
+                    cursor: 'pointer',
+                    borderRadius: '4px',
+                    transition: 'background 0.2s',
+                    color: textColor,
+                    userSelect: 'none'
+                }}
+                className="tree-item"
+                onMouseEnter={(e) => e.currentTarget.style.background = hoverColor}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+                <div style={{ marginRight: '4px', display: 'flex', alignItems: 'center', width: '20px', justifyContent: 'center' }}>
+                    {hasChildren && (
+                        expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />
+                    )}
+                </div>
+
+                <div
+                    onClick={handleToggle}
+                    style={{
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '4px',
+                        border: `1px solid ${isChecked ? (isDark ? '#4dabf7' : '#007bff') : (isDark ? '#666' : '#ccc')}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: isChecked ? (isDark ? '#4dabf7' : '#007bff') : 'transparent',
+                        marginRight: '8px'
+                    }}
+                >
+                    {isChecked && <Check size={12} color="white" />}
+                </div>
+
+                <Folder size={16} color={isDark ? '#ccc' : '#666'} style={{ marginRight: '8px' }} />
+                <span style={{ fontSize: '13px' }}>{node.name}</span>
+            </div>
+
+            {hasChildren && expanded && (
+                <div>
+                    {node.children.map(child => (
+                        <FolderTreeItem
+                            key={child.path}
+                            node={child}
+                            selectedFolders={selectedFolders}
+                            onToggle={onToggle}
+                            theme={theme}
+                            level={level + 1}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
 
 const FolderSelectorModal = ({ isOpen, currentPath, subfolders, onConfirm, onCancel, theme }) => {
     const [selectedFolders, setSelectedFolders] = useState([]);
@@ -10,6 +93,34 @@ const FolderSelectorModal = ({ isOpen, currentPath, subfolders, onConfirm, onCan
         }
     }, [isOpen, subfolders]);
 
+    // Build Tree Structure
+    const tree = useMemo(() => {
+        const root = { name: 'root', path: '', children: [] };
+
+        // Sort folders to ensure parents come before children if flat list is sorted, 
+        // but robust logic handles any order.
+        const sortedFolders = [...subfolders].sort();
+
+        sortedFolders.forEach(path => {
+            const parts = path.split('/');
+            let currentLevel = root.children;
+            let currentPath = '';
+
+            parts.forEach((part, index) => {
+                currentPath = currentPath ? `${currentPath}/${part}` : part;
+
+                let existingNode = currentLevel.find(n => n.name === part);
+                if (!existingNode) {
+                    existingNode = { name: part, path: currentPath, children: [] };
+                    currentLevel.push(existingNode);
+                }
+                currentLevel = existingNode.children;
+            });
+        });
+
+        return root.children;
+    }, [subfolders]);
+
     if (!isOpen) return null;
 
     const isDark = theme === 'dark';
@@ -17,14 +128,35 @@ const FolderSelectorModal = ({ isOpen, currentPath, subfolders, onConfirm, onCan
     const textColor = isDark ? '#ffffff' : '#000000';
     const borderColor = isDark ? '#333' : '#ddd';
 
-    const toggleFolder = (folder) => {
-        setSelectedFolders(prev =>
-            prev.includes(folder) ? prev.filter(f => f !== folder) : [...prev, folder]
-        );
+    const getAllDescendants = (node) => {
+        let descendants = [node.path];
+        if (node.children) {
+            node.children.forEach(child => {
+                descendants = [...descendants, ...getAllDescendants(child)];
+            });
+        }
+        return descendants;
+    };
+
+    const toggleFolder = (node) => {
+        const isCurrentlyChecked = selectedFolders.includes(node.path);
+        const descendants = getAllDescendants(node);
+
+        if (isCurrentlyChecked) {
+            // Uncheck: Remove this node and all descendants
+            setSelectedFolders(prev => prev.filter(p => !descendants.includes(p)));
+        } else {
+            // Check: Add this node and all descendants
+            // Also need to check if we are adding doubles? Set handles it, or check existence.
+            setSelectedFolders(prev => {
+                const unique = new Set([...prev, ...descendants]);
+                return Array.from(unique);
+            });
+        }
     };
 
     const toggleAll = () => {
-        if (selectedFolders.length === subfolders.length) {
+        if (selectedFolders.length > 0) {
             setSelectedFolders([]);
         } else {
             setSelectedFolders(subfolders);
@@ -64,7 +196,7 @@ const FolderSelectorModal = ({ isOpen, currentPath, subfolders, onConfirm, onCan
                     </p>
                 </div>
 
-                <div style={{ padding: '10px 20px', display: 'flex', justifyContent: 'flex-end' }}>
+                <div style={{ padding: '10px 20px', display: 'flex', justifyContent: 'flex-end', borderBottom: `1px solid ${borderColor}` }}>
                     <button
                         onClick={toggleAll}
                         style={{
@@ -76,46 +208,25 @@ const FolderSelectorModal = ({ isOpen, currentPath, subfolders, onConfirm, onCan
                             fontWeight: '600'
                         }}
                     >
-                        {selectedFolders.length === subfolders.length ? 'Deselect All' : 'Select All'}
+                        {selectedFolders.length > 0 ? 'Deselect All' : 'Select All'}
                     </button>
                 </div>
 
-                <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 20px 20px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px' }}>
-                        {subfolders.map(folder => (
-                            <div
-                                key={folder}
-                                onClick={() => toggleFolder(folder)}
-                                style={{
-                                    padding: '12px',
-                                    borderRadius: '8px',
-                                    border: `1px solid ${selectedFolders.includes(folder) ? (isDark ? '#4dabf7' : '#007bff') : borderColor}`,
-                                    background: selectedFolders.includes(folder) ? (isDark ? 'rgba(77, 171, 247, 0.1)' : 'rgba(0, 123, 255, 0.05)') : 'transparent',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    transition: 'all 0.2s',
-                                    opacity: selectedFolders.includes(folder) ? 1 : 0.7
-                                }}
-                            >
-                                <div style={{
-                                    width: '18px',
-                                    height: '18px',
-                                    borderRadius: '4px',
-                                    border: `1px solid ${selectedFolders.includes(folder) ? (isDark ? '#4dabf7' : '#007bff') : (isDark ? '#666' : '#ccc')}`,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    background: selectedFolders.includes(folder) ? (isDark ? '#4dabf7' : '#007bff') : 'transparent'
-                                }}>
-                                    {selectedFolders.includes(folder) && <Check size={12} color="white" />}
-                                </div>
-                                <Folder size={16} color={isDark ? '#ccc' : '#666'} />
-                                <span style={{ fontSize: '13px', color: textColor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{folder}</span>
-                            </div>
-                        ))}
-                    </div>
+                <div style={{ flex: 1, overflowY: 'auto', padding: '10px 0' }}>
+                    {tree.length === 0 && (
+                        <div style={{ padding: '20px', textAlign: 'center', opacity: 0.5, color: textColor }}>
+                            No subfolders found.
+                        </div>
+                    )}
+                    {tree.map(node => (
+                        <FolderTreeItem
+                            key={node.path}
+                            node={node}
+                            selectedFolders={selectedFolders}
+                            onToggle={toggleFolder}
+                            theme={theme}
+                        />
+                    ))}
                 </div>
 
                 <div style={{ padding: '20px', borderTop: `1px solid ${borderColor}`, display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
@@ -131,7 +242,7 @@ const FolderSelectorModal = ({ isOpen, currentPath, subfolders, onConfirm, onCan
                             fontWeight: '600'
                         }}
                     >
-                        Use All (Default)
+                        Cancel
                     </button>
                     <button
                         onClick={() => onConfirm(selectedFolders)}
@@ -145,7 +256,7 @@ const FolderSelectorModal = ({ isOpen, currentPath, subfolders, onConfirm, onCan
                             fontWeight: '600'
                         }}
                     >
-                        Confirm Selection
+                        Confirm Selection ({selectedFolders.length})
                     </button>
                 </div>
             </div>
