@@ -72,6 +72,9 @@ const CustomNode = ({ data }) => {
 
     const iconColor = styleMode === 'full' ? textColor : color;
 
+    // Debugging
+    // console.log('Node', label, 'showCounts:', data.showCounts);
+
     return (
         <div
             onContextMenu={(e) => {
@@ -115,13 +118,15 @@ const CustomNode = ({ data }) => {
             )}
 
             {/* Dependency Count / Source Label */}
-            {data.incomingCount > 0 ? (
-                <div style={{ fontSize: '9px', marginTop: '4px', opacity: 0.7, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <span>Direct: {data.incomingCount}</span>
-                    <span>Nested: {data.nestedCount !== undefined ? data.nestedCount : '-'}</span>
-                </div>
-            ) : (
-                <div style={{ fontSize: '9px', marginTop: '4px', opacity: 0.6 }}>Source</div>
+            {data.showCounts !== false && (
+                data.incomingCount > 0 ? (
+                    <div style={{ fontSize: '9px', marginTop: '4px', opacity: 0.7, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <span>Direct: {data.incomingCount}</span>
+                        <span>Nested: {data.nestedCount !== undefined ? data.nestedCount : '-'}</span>
+                    </div>
+                ) : (
+                    <div style={{ fontSize: '9px', marginTop: '4px', opacity: 0.6 }}>Source</div>
+                )
             )}
 
             <Handle type="source" position={Position.Right} style={{ background: isDark ? '#fff' : '#555' }} />
@@ -129,4 +134,4 @@ const CustomNode = ({ data }) => {
     );
 };
 
-export default memo(CustomNode);
+export default CustomNode; // Removed memo for immediate update reliability

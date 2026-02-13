@@ -69,6 +69,7 @@ const Flow = () => {
   }, []);
 
   const [visibleLayers, setVisibleLayers] = useState({ bronze: true, silver: true, gold: true, other: true });
+  const [showCounts, setShowCounts] = useState(true);
 
   // Update nodes when theme, nodeStyle, palette, or visibleLayers changes
   useEffect(() => {
@@ -87,6 +88,7 @@ const Flow = () => {
             theme,
             styleMode: nodeStyle,
             palette,
+            showCounts,
             onContextMenu: onNodeContextMenu
           };
         } else if (node.type === 'annotation') {
@@ -117,7 +119,7 @@ const Flow = () => {
       })
     );
 
-  }, [theme, nodeStyle, palette, visibleLayers, setNodes, onNodeContextMenu, onEdit, setEdges]);
+  }, [theme, nodeStyle, palette, visibleLayers, showCounts, setNodes, onNodeContextMenu, onEdit, setEdges]);
 
   // Initial Load: Try to load state, otherwise fetch graph
   useEffect(() => {
@@ -140,7 +142,8 @@ const Flow = () => {
             onEdit: n.type === 'annotation' ? onEdit : undefined,
             theme,
             styleMode: nodeStyle,
-            palette
+            palette,
+            showCounts // Include showCounts
           }
         }));
         setNodes(restoredNodes);
@@ -436,6 +439,20 @@ const Flow = () => {
             🖌️ {palette.charAt(0).toUpperCase() + palette.slice(1)}
           </button>
 
+
+          <div style={{ width: 1, height: 20, background: borderColor }}></div>
+
+          <button
+            onClick={() => setShowCounts(prev => !prev)}
+            title="Toggle Dependency Counts"
+            style={{
+              background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '14px',
+              opacity: showCounts ? 1 : 0.5, transition: 'opacity 0.2s',
+              display: 'flex', alignItems: 'center', gap: '4px', color: textColor
+            }}
+          >
+            🔢
+          </button>
 
           <div style={{ width: 1, height: 20, background: borderColor }}></div>
 
