@@ -18,9 +18,9 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme })
         left: 0,
         width: '300px',
         height: '100%',
-        background: isDark ? '#1a1a1a' : '#ffffff',
+        background: isDark ? '#1a1a1a' : '#ffffff', // Ensure solid background
         borderRight: isDark ? '1px solid #333' : '1px solid #ddd',
-        zIndex: 25,
+        zIndex: 1000,
         display: 'flex',
         flexDirection: 'column',
         boxShadow: '5px 0 15px rgba(0,0,0,0.1)',

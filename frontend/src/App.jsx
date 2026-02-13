@@ -606,15 +606,18 @@ const Flow = () => {
         </div>
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar - zIndex increased to be above TopBar (100) */}
+      {/* Sidebar - zIndex adjusted to be well above TopBar */}
       {sidebarOpen && (
-        <Sidebar
-          nodes={nodes}
-          hiddenNodeIds={hiddenNodeIds}
-          toggleNodeVisibility={toggleNodeVisibility}
-          onClose={() => setSidebarOpen(false)}
-          theme={theme}
-        />
+        <div style={{ position: 'absolute', top: '60px', left: 0, height: 'calc(100% - 60px)', zIndex: 1000 }}>
+          <Sidebar
+            nodes={nodes}
+            hiddenNodeIds={hiddenNodeIds}
+            toggleNodeVisibility={toggleNodeVisibility}
+            onClose={() => setSidebarOpen(false)}
+            theme={theme}
+          />
+        </div>
       )}
 
       {/* Folder Selection Modal */}
@@ -647,7 +650,7 @@ const Flow = () => {
           boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
         }}>
           {/* Sidebar Toggle */}
-          <button onClick={() => setSidebarOpen(true)} title="Nodes & Layers" style={bottomButtonStyle}>
+          <button onClick={() => setSidebarOpen(prev => !prev)} title="Nodes & Layers" style={bottomButtonStyle}>
             <Menu size={20} />
           </button>
 
@@ -748,9 +751,9 @@ const Flow = () => {
       {/* Side Panel for Node Details */}
       {detailsNode && !isExporting && (
         <div style={{
-          position: 'absolute', top: 0, right: 0, width: '400px', height: '100%',
+          position: 'absolute', top: '60px', right: 0, width: '400px', height: 'calc(100% - 60px)',
           background: theme === 'dark' ? '#1a1a1a' : '#fff', borderLeft: `1px solid ${borderColor}`,
-          zIndex: 20, padding: '20px', boxSizing: 'border-box', overflowY: 'auto',
+          zIndex: 1000, padding: '20px', boxSizing: 'border-box', overflowY: 'auto',
           boxShadow: '-5px 0 30px rgba(0,0,0,0.3)'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
