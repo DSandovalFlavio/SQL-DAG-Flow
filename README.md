@@ -10,31 +10,38 @@ Created by **@dsandovalflavio**.
 
 ## 🚀 Key Features
 
-*   **Automatic Parsing**: Recursively scans your project folders to find `.sql` files and detect dependencies (`FROM`, `JOIN`, `CTE`s).
-*   **Medallion Architecture Support**: Automatically categorizes nodes into **Bronze**, **Silver**, and **Gold** layers based on folder structure.
-*   **Interactive Visualization**:
-    *   **Drag & Drop**: Organize your layout intuitively.
-    *   **MiniMap**: Navigate large pipelines with ease.
-    *   **Layer Filtering**: Toggle Bronze/Silver/Gold layers on the fly.
-*   **Metadata Rich**: View full SQL content, schema details, and nested dependency counts for every node.
-*   **Annotations**: Add sticky notes and groups to document your architecture directly on the canvas.
-*   **Export Ready**: One-click PNG export with a clean, professional look (hides UI controls automatically).
+*   **Automatic Parsing & Visualization**: Recursively scans your project folders to find `.sql` files and detect dependencies (`FROM`, `JOIN`, `CTE`s) using `sqlglot`.
+*   **Medallion Architecture Support**: Automatically categories and colors nodes based on folder structure (Bronze 🟤, Silver ⚪, Gold 🟡).
+*   **Smart Folder Selection**:
+    *   **Selective Exploration**: Choose specific subfolders to scan using an interactive tree view.
+    *   **Deep Filtering**: Include/exclude nested folders to focus only on relevant parts of your pipeline.
+*   **Advanced Graph Controls**:
+    *   **Node Hiding**: Hide specific nodes or entire trees to declutter the view.
+    *   **Auto Layout**: Automatically arrange nodes for optimal readability with one click.
+    *   **Interactive Sidebar**: Search, filter, and manage visibility of all nodes from a dedicated panel.
+*   **Configuration Management**:
+    *   **Save & Load**: Save your current layout, hidden nodes, and viewport state to JSON files.
+    *   **Workspaces**: Switch between different project configurations easily.
+*   **Rich Metadata & Annotations**:
+    *   **Details Panel**: View full SQL content, schema details, and dependency statistics.
+    *   **Annotations**: Add sticky notes and visual groups to document your architecture directly on the canvas.
+*   **Premium UI/UX**:
+    *   **Theme Support**: Toggle between Light ☀️ and Dark 🌙 modes.
+    *   **Customizable Views**: Switch between "Full" and "Minimal" node styles.
+    *   **HD Export**: Export your diagram as high-resolution **PNG** or vector **SVG** for presentations.
 
 ## 🌍 Supported Dialects
 
-**SQL DAG Flow** uses the robust `sqlglot` library for parsing.
+**SQL DAG Flow** uses the robust `sqlglot` library, supporting a wide range of SQL dialects:
 
-*   **Current Default**: `BigQuery` (GoogleSQL)
-*   **Extensible Support**: The parser can be easily configured to support any of the following dialects:
-    *   ❄️ **Snowflake**
-    *   🐘 **PostgreSQL**
-    *   ✨ **Spark / Databricks**
-    *   🔴 **Amazon Redshift**
-    *   🦆 **DuckDB**
-    *   🐬 **MySQL**
-    *   🐘 **Trino / Presto**
-    *   🗄️ **Oracle**
-    *   ...and many more!
+*   **BigQuery** (Default)
+*   **Snowflake**
+*   **PostgreSQL**
+*   **Spark / Databricks**
+*   **Amazon Redshift**
+*   **DuckDB**
+*   **MySQL**
+*   ...and many more!
 
 ## 📋 Prerequisites
 
@@ -43,7 +50,7 @@ Created by **@dsandovalflavio**.
 
 ## 🛠️ Project Structure
 
-**SQL DAG Flow** expects your SQL project to follow a standard structure (though it is flexible). Ideally:
+**SQL DAG Flow** is optimized for the Medallion structure but flexible enough for any layout:
 
 ```text
 my-data-project/
@@ -58,11 +65,6 @@ my-data-project/
     └── ...
 ```
 
-The tool will scan all subfolders. It uses the folder names to assign colors and layers:
-*   `bronze` → 🟤 Bronze Layer
-*   `silver` → ⚪ Silver Layer
-*   `gold` → 🟡 Gold Layer
-
 ## 📦 Installation & Setup
 
 ### 1. Backend Setup
@@ -73,8 +75,6 @@ Navigate to the `backend` folder and install Python dependencies.
 cd backend
 pip install -r requirements.txt
 ```
-
-*(Ensure you have `flask`, `sqlglot`, and `networkx` installed)*
 
 ### 2. Frontend Setup
 
@@ -96,15 +96,19 @@ npm install
 
 Or manually:
 
-1.  **Backend**: `python backend/app.py` (Runs on port 5000)
+1.  **Backend**: `python backend/main.py` (Runs on port 8000)
 2.  **Frontend**: `npm run dev` (Runs on port 5173)
 
 ## 🎮 Usage
 
 1.  Open your browser at `http://localhost:5173`.
-2.  Click the **Folder Icon** (📂) in the bottom ribbon.
-3.  Enter the absolute path to your SQL project folder.
-4.  **SQL DAG Flow** will scan, parse, and visualize your entire pipeline!
+2.  **Open Project**: Click **Open** in the top bar and enter your SQL project path.
+3.  **Select Folders**: Choose which subfolders to include in your visualization.
+4.  **Explore**:
+    *   **Left Sidebar**: Manage node visibility and search.
+    *   **Right Panel**: Click a node to view SQL code and details.
+    *   **Bottom Toolbar**: Change themes, layouts, and add annotations.
+5.  **Save/Export**: Save your configuration or export the image via the top bar.
 
 ## 🤝 Contributing
 

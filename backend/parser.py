@@ -59,15 +59,33 @@ def parse_sql_files(directory, allowed_subfolders=None):
             rel_root_check = os.path.relpath(root, directory).replace(os.sep, '/')
             if rel_root_check == ".": rel_root_check = ""
             
-            for allowed in allowed_subfolders:
-                # 1. Exact match
-                if rel_root_check == allowed:
-                    should_parse_files = True
-                    break
-                # 2. Child of allowed (e.g. allowed="A", rel_root="A/B")
-                if rel_root_check.startswith(allowed + '/'):
-                    should_parse_files = True
-                    break
+            # 1. Decide if we should parse files in THIS folder
+            if rel_root_check in allowed_subfolders:
+                should_parse_files = True
+            
+            # 2. Prune 'dirs' to only traverse towards allowed folders
+            allowed_dirs = []
+            for d in dirs:
+                rel_d = f"{rel_root_check}/{d}" if rel_root_check else d
+                
+                # Keep 'd' if:
+                # A. It is explicitly in the allowed list (so we can go there and parse)
+                # B. It is an ANCESTOR of something in the allowed list (so we can reach the allowed child)
+                
+                is_traversal_allowed = False
+                if rel_d in allowed_subfolders:
+                    is_traversal_allowed = True
+                else:
+                    # Check if it's an ancestor
+                    for allowed in allowed_subfolders:
+                        if allowed.startswith(rel_d + '/'):
+                            is_traversal_allowed = True
+                            break
+                            
+                if is_traversal_allowed:
+                    allowed_dirs.append(d)
+            
+            dirs[:] = allowed_dirs
         
         if not should_parse_files:
             continue
