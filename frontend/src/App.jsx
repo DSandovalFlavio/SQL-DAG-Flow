@@ -785,6 +785,22 @@ const Flow = () => {
                   style={{ width: '100%', height: '100px', background: theme === 'dark' ? '#333' : '#eee', border: 'none', color: textColor, padding: '10px', borderRadius: '8px', resize: 'vertical' }}
                 />
               </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontSize: '12px', opacity: 0.6, color: textColor, marginBottom: '8px' }}>Font Size (px)</label>
+                <input
+                  type="number"
+                  min="10"
+                  max="100"
+                  value={detailsNode.fontSize || 14}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    setNodes(nds => nds.map(n => n.id === detailsNode.id ? { ...n, data: { ...n.data, fontSize: val } } : n));
+                    setDetailsNode(curr => ({ ...curr, fontSize: val }));
+                  }}
+                  style={{ width: '100%', background: theme === 'dark' ? '#333' : '#eee', border: 'none', color: textColor, padding: '10px', borderRadius: '8px' }}
+                />
+              </div>
               {!detailsNode.isGroup && (
                 <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <input

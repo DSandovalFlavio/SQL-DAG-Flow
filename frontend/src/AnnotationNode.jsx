@@ -1,30 +1,43 @@
 import React, { memo, useState } from 'react';
 import { Handle, Position, NodeResizer } from '@xyflow/react';
+import ReactMarkdown from 'react-markdown';
 
 const AnnotationNode = ({ id, data, selected }) => {
     const [hovered, setHovered] = useState(false);
 
     return (
         <>
-            <NodeResizer minWidth={100} minHeight={30} isVisible={selected} />
+            <NodeResizer
+                minWidth={150}
+                minHeight={50}
+                isVisible={selected}
+                lineStyle={{ border: '1px solid #777' }}
+                handleStyle={{ width: 8, height: 8 }}
+            />
             <div
                 onMouseEnter={() => setHovered(true)}
                 onMouseLeave={() => setHovered(false)}
                 style={{
-                    padding: '10px',
+                    padding: '15px',
                     height: '100%',
+                    width: '100%',
+                    boxSizing: 'border-box', // Ensure padding doesn't affect dimensions negatively
                     display: 'flex',
                     flexDirection: 'column',
-                    justifyContent: 'center',
+                    // Auto-resize logic handled by React Flow if dimensions not set, but NodeResizer interaction implies manual sizing too.
+                    // For "auto" resize based on text, we rely on the container scaling or manual resize. 
+                    // Let's ensure content flows well.
+                    justifyContent: 'flex-start',
                     background: data.isGroup ? 'rgba(255, 255, 255, 0.05)' : (data.transparent ? 'transparent' : (data.theme === 'dark' ? '#222' : '#fff')),
                     border: data.isGroup ? '2px dashed rgba(128,128,128,0.5)' : (data.transparent ? '1px dashed rgba(128,128,128,0.3)' : '1px solid #777'),
                     borderRadius: '8px',
                     color: data.theme === 'dark' ? '#fff' : '#000',
                     zIndex: data.isGroup ? -1 : 10,
                     boxShadow: (data.isGroup || data.transparent) ? 'none' : '0 4px 6px rgba(0,0,0,0.1)',
-                    textAlign: data.isGroup ? 'left' : 'center',
-                    fontSize: data.isGroup ? '14px' : '12px',
-                    position: 'relative'
+                    textAlign: data.isGroup ? 'left' : 'left', // Markdown usually looks better left-aligned
+                    fontSize: (data.fontSize || (data.isGroup ? 14 : 14)) + 'px',
+                    position: 'relative',
+                    overflow: 'hidden' // Clip content if it exceeds resized box
                 }}
             >
                 {/* Three Dots Menu Button - Refined Design */}
@@ -66,9 +79,14 @@ const AnnotationNode = ({ id, data, selected }) => {
                     </div>
                 )}
 
-                {data.isGroup && <div style={{ fontWeight: 'bold', opacity: 0.7, marginBottom: 'auto', pointerEvents: 'none' }}>{data.label}</div>}
-                {!data.isGroup && <div style={{ pointerEvents: 'none', whiteSpace: 'pre-wrap' }}>{data.label}</div>}
-            </div >
+                {data.isGroup && <div style={{ fontWeight: 'bold', opacity: 0.7, marginBottom: '5px', pointerEvents: 'none' }}>{data.label}</div>}
+
+                {!data.isGroup && (
+                    <div style={{ pointerEvents: 'none', width: '100%', height: '100%', overflowY: 'auto' }} className="markdown-content">
+                        <ReactMarkdown>{data.label || "*Double click or use menu to edit*"}</ReactMarkdown>
+                    </div>
+                )}
+            </div>
         </>
     );
 };
