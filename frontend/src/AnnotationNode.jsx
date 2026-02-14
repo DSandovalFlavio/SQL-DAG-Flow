@@ -32,8 +32,10 @@ const AnnotationNode = ({ id, data, selected }) => {
                     <div
                         onClick={(e) => {
                             e.stopPropagation();
-                            // FIX: Pass the correct structure { id, type, data: {...} }
-                            if (data.onEdit) data.onEdit({ id, type: 'annotation', data });
+                            // Inject id for consistency with CustomNode
+                            data.id = id;
+                            data.type = 'annotation'; // Helper
+                            if (data.onEdit) data.onEdit(data);
                         }}
                         className="nodrag"
                         title="Settings"
@@ -66,7 +68,7 @@ const AnnotationNode = ({ id, data, selected }) => {
 
                 {data.isGroup && <div style={{ fontWeight: 'bold', opacity: 0.7, marginBottom: 'auto', pointerEvents: 'none' }}>{data.label}</div>}
                 {!data.isGroup && <div style={{ pointerEvents: 'none', whiteSpace: 'pre-wrap' }}>{data.label}</div>}
-            </div>
+            </div >
         </>
     );
 };

@@ -95,6 +95,7 @@ const Flow = () => {
   const onEdit = useCallback((nodeData) => {
     // For annotations, usually just select
     setSelectedNode(nodeData);
+    setDetailsNode(nodeData); // Also open details panel for editing
   }, []);
 
   // Node Hiding Logic
@@ -240,8 +241,10 @@ const Flow = () => {
           }
         } else {
           // Default state (no selection) - keep edges subtle but visible
-          stroke = theme === 'dark' ? '#555' : '#b1b1b7';
-          opacity = theme === 'dark' ? 0.6 : 0.8;
+          // Increase visibility as requested
+          stroke = theme === 'dark' ? '#666' : '#999';
+          strokeWidth = 2; // Thicker default lines
+          opacity = theme === 'dark' ? 0.8 : 0.8;
           animated = false;
         }
 
@@ -758,7 +761,7 @@ const Flow = () => {
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h2 style={{ margin: 0, color: textColor, fontSize: '18px' }}>
-              {detailsNode.type === 'annotation' ? (detailsNode.data.isGroup ? 'Group Settings' : 'Note Settings') : 'Node Details'}
+              {detailsNode.type === 'annotation' ? (detailsNode.isGroup ? 'Group Settings' : 'Note Settings') : 'Node Details'}
             </h2>
             <button onClick={() => setDetailsNode(null)} style={{ background: 'transparent', border: 'none', color: textColor, fontSize: '24px', cursor: 'pointer' }}>×</button>
           </div>
@@ -771,8 +774,13 @@ const Flow = () => {
                   value={detailsNode.label}
                   onChange={(e) => {
                     const val = e.target.value;
-                    setNodes(nds => nds.map(n => n.id === detailsNode.id ? { ...n, data: { ...n.data, label: val } } : n));
-                    setDetailsNode(curr => ({ ...curr, label: val }));
+                    // Update main nodes state
+                    setNodes(nds => nds.map(n => n.id === detailsNode.id ? {
+                      ...n,
+                      data: { ...n.data, label: val }
+                    } : n));
+                    // Update local details view
+                    setDetailsNode(curr => ({ ...curr, label: val })); // Ensure nested data is also updated if needed
                   }}
                   style={{ width: '100%', height: '100px', background: theme === 'dark' ? '#333' : '#eee', border: 'none', color: textColor, padding: '10px', borderRadius: '8px', resize: 'vertical' }}
                 />
