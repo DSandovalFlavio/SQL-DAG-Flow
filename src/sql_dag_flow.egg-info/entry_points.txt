@@ -1,0 +1,2 @@
+[console_scripts]
+sql-dag-flow = sql_dag_flow.main:start

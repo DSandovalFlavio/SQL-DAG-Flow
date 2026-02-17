@@ -85,30 +85,46 @@ cd frontend
 npm install
 ```
 
-## ▶️ Running the Application
+## ▶️ Installation & Usage
 
- We have provided a handy script to start both services at once.
+### 🚀 Recommended: Python Package
 
-**Windows (PowerShell):**
-```powershell
-.\start_app.ps1
-```
+This tool is designed to be installed as a Python package, similar to `dbt` or `duckdb`.
 
-Or manually:
+1.  **Install**:
+    Navigate to the project root and install it via `pip`:
+    ```bash
+    pip install .
+    # Or for editable mode (if developing):
+    pip install -e .
+    ```
 
-1.  **Backend**: `python backend/main.py` (Runs on port 8000)
-2.  **Frontend**: `npm run dev` (Runs on port 5173)
+2.  **Run**:
+    Once installed, you can use the `sql-dag-flow` command freely in your terminal:
+
+    ```bash
+    # Visualization the current directory
+    sql-dag-flow
+
+    # Visualize a specific project
+    sql-dag-flow /path/to/my/sql/project
+    ```
+
+    *Note: Ensure your Python Scripts folder is in your PATH if the command is not found.*
+
+### 🛠️ Development Mode (Legacy)
+
+If you want to modify the frontend code:
+
+1.  **Backend**: `python -m src.sql_dag_flow.main`
+2.  **Frontend**: `cd frontend && npm run dev`
 
 ## 🎮 Usage
 
-1.  Open your browser at `http://localhost:5173`.
-2.  **Open Project**: Click **Open** in the top bar and enter your SQL project path.
-3.  **Select Folders**: Choose which subfolders to include in your visualization.
-4.  **Explore**:
-    *   **Left Sidebar**: Manage node visibility and search.
-    *   **Right Panel**: Click a node to view SQL code and details.
-    *   **Bottom Toolbar**: Change themes, layouts, and add annotations.
-5.  **Save/Export**: Save your configuration or export the image via the top bar.
+1.  The browser should open automatically.
+2.  If not, navigate to `http://localhost:8000`.
+3.  **Open Project**: Click **Open** in the top bar and enter your SQL project path (if not already passed via CLI).
+4.  **Select Folders**: Choose which subfolders to include in your visualization.
 
 ## 🤝 Contributing
 

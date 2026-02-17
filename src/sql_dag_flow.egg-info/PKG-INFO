@@ -1,0 +1,138 @@
+Metadata-Version: 2.4
+Name: sql-dag-flow
+Version: 0.1.0
+Summary: A sophisticated SQL lineage visualization tool for Medallion Architectures.
+Author-email: Flavio Sandoval <your.email@example.com>
+License: MIT
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: fastapi
+Requires-Dist: uvicorn
+Requires-Dist: sqlglot
+Requires-Dist: networkx
+Requires-Dist: pydantic
+Dynamic: license-file
+
+# SQL DAG Flow
+
+**SQL DAG Flow** is a powerful, open-source visualization tool designed to automatically map and visualize the lineage of your SQL data pipelines.
+
+Built specifically for modern data stacks using the **Medallion Architecture** (Bronze, Silver, Gold), it parses your SQL files to generate an interactive, dependency-aware Directed Acyclic Graph (DAG).
+
+Created by **@dsandovalflavio**.
+
+![SQL DAG Flow Screenshot](/images/sql-architecture-logo.png)
+
+## 🚀 Key Features
+
+*   **Automatic Parsing & Visualization**: Recursively scans your project folders to find `.sql` files and detect dependencies (`FROM`, `JOIN`, `CTE`s) using `sqlglot`.
+*   **Medallion Architecture Support**: Automatically categories and colors nodes based on folder structure (Bronze 🟤, Silver ⚪, Gold 🟡).
+*   **Smart Folder Selection**:
+    *   **Selective Exploration**: Choose specific subfolders to scan using an interactive tree view.
+    *   **Deep Filtering**: Include/exclude nested folders to focus only on relevant parts of your pipeline.
+*   **Advanced Graph Controls**:
+    *   **Node Hiding**: Hide specific nodes or entire trees to declutter the view.
+    *   **Auto Layout**: Automatically arrange nodes for optimal readability with one click.
+    *   **Interactive Sidebar**: Search, filter, and manage visibility of all nodes from a dedicated panel.
+*   **Configuration Management**:
+    *   **Save & Load**: Save your current layout, hidden nodes, and viewport state to JSON files.
+    *   **Workspaces**: Switch between different project configurations easily.
+*   **Rich Metadata & Annotations**:
+    *   **Details Panel**: View full SQL content, schema details, and dependency statistics.
+    *   **Annotations**: Add sticky notes and visual groups to document your architecture directly on the canvas.
+*   **Premium UI/UX**:
+    *   **Theme Support**: Toggle between Light ☀️ and Dark 🌙 modes.
+    *   **Customizable Views**: Switch between "Full" and "Minimal" node styles.
+    *   **HD Export**: Export your diagram as high-resolution **PNG** or vector **SVG** for presentations.
+
+## 🌍 Supported Dialects
+
+**SQL DAG Flow** uses the robust `sqlglot` library, supporting a wide range of SQL dialects:
+
+*   **BigQuery** (Default)
+*   **Snowflake**
+*   **PostgreSQL**
+*   **Spark / Databricks**
+*   **Amazon Redshift**
+*   **DuckDB**
+*   **MySQL**
+*   ...and many more!
+
+## 📋 Prerequisites
+
+*   **Python**: 3.8+ (for the backend parser)
+*   **Node.js**: 16+ (for the frontend visualization)
+
+## 🛠️ Project Structure
+
+**SQL DAG Flow** is optimized for the Medallion structure but flexible enough for any layout:
+
+```text
+my-data-project/
+├── bronze/
+│   ├── raw_users.sql
+│   └── ...
+├── silver/
+│   ├── cleaned_users.sql
+│   └── ...
+└── gold/
+    ├── user_stats.sql
+    └── ...
+```
+
+## 📦 Installation & Setup
+
+### 1. Backend Setup
+
+Navigate to the `backend` folder and install Python dependencies.
+
+```bash
+cd backend
+pip install -r requirements.txt
+```
+
+### 2. Frontend Setup
+
+Navigate to the `frontend` folder and install Node dependencies.
+
+```bash
+cd frontend
+npm install
+```
+
+## ▶️ Running the Application
+
+### Option A: Quick CLI (Recommended)
+
+Run the application directly from your terminal, similar to tools like `duckdb`.
+
+1.  **Add to PATH**: Add the project root folder to your System PATH environment variable.
+2.  **Run**:
+    ```powershell
+    # Run in current directory
+    sql-dag-flow .
+
+    # Run for a specific project
+    sql-dag-flow "C:\path\to\my\sql\project"
+    ```
+    Typically, this will automatically launch your browser at `http://localhost:8000`.
+
+### Option B: Development Mode
+
+1.  **Backend**: `python backend/main.py`
+2.  **Frontend**: `npm run dev`
+
+## 🎮 Usage
+
+1.  The browser should open automatically.
+2.  If not, navigate to `http://localhost:8000`.
+3.  **Open Project**: Click **Open** in the top bar and enter your SQL project path (if not already passed via CLI).
+4.  **Select Folders**: Choose which subfolders to include in your visualization.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to verify the `LICENSE` and submit a Pull Request.
+
+---
+*Developed with ❤️ by [@dsandovalflavio](https://github.com/dsandovalflavio)*
