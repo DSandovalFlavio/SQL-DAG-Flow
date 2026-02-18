@@ -25,7 +25,10 @@ Built specifically for modern data stacks using the **Medallion Architecture** (
     *   **Workspaces**: manage multiple project configurations.
 *   **Rich Metadata**:
     *   **Details Panel**: View full SQL content and schema details.
-    *   **Annotations**: Add sticky notes and groups to document your architecture.
+    *   **Annotations**: Add sticky notes with **Markdown support**, resize them, and create visual groups.
+*   **Visual Cues**:
+    *   **Solid Border**: Indicates a Table.
+    *   **Dashed Border**: Indicates a View (auto-detected).
 *   **Premium UI/UX**:
     *   **Dark/Light Modes**: Themed for your preference.
     *   **Export**: Save as high-resolution **PNG** or vector **SVG**.

@@ -670,6 +670,17 @@ const Flow = () => {
             <button onClick={downloadSVG} title="Export SVG" style={topButtonStyle}>
               <Ruler size={16} /> Export SVG
             </button>
+
+            <div style={{ width: 1, height: 20, background: borderColor, margin: '0 4px' }}></div>
+
+            <button
+              onClick={() => window.open('https://github.com/dsandovalflavio/SQL-DAG-Flow', '_blank')}
+              title="View on GitHub"
+              style={topButtonStyle}
+            >
+              <div style={{ width: 16, height: 16, borderRadius: '50%', border: `1px solid ${textColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 'bold' }}>i</div>
+              Info
+            </button>
           </div>
         </div>
       )}
@@ -757,6 +768,17 @@ const Flow = () => {
                   {nodeStyle === 'full' ? '🎨 Full' : '⭕ Minimal'}
                 </button>
 
+                <div style={{ fontSize: '11px', fontWeight: 'bold', color: textColor, opacity: 0.7, marginTop: '4px' }}>PALETTE</div>
+                <button
+                  onClick={() => {
+                    const next = palette === 'standard' ? 'vivid' : (palette === 'vivid' ? 'pastel' : 'standard');
+                    setPalette(next);
+                  }}
+                  style={{ ...topButtonStyle, justifyContent: 'flex-start', width: '100%' }}
+                >
+                  🖌️ {palette.charAt(0).toUpperCase() + palette.slice(1)}
+                </button>
+
                 <div style={{ fontSize: '11px', fontWeight: 'bold', color: textColor, opacity: 0.7, marginTop: '4px' }}>DIALECT</div>
                 <select
                   value={dialect}
@@ -771,7 +793,7 @@ const Flow = () => {
                     background: theme === 'dark' ? '#222' : '#fff',
                     border: `1px solid ${borderColor}`,
                     outline: 'none',
-                    appearance: 'none', // Remove default arrow if desired, or keep it
+                    appearance: 'none',
                     padding: '6px'
                   }}
                 >
@@ -782,17 +804,6 @@ const Flow = () => {
                   <option value="redshift">Redshift</option>
                   <option value="duckdb">DuckDB</option>
                 </select>
-
-                <div style={{ fontSize: '11px', fontWeight: 'bold', color: textColor, opacity: 0.7, marginTop: '4px' }}>PALETTE</div>
-                <button
-                  onClick={() => {
-                    const next = palette === 'standard' ? 'vivid' : (palette === 'vivid' ? 'pastel' : 'standard');
-                    setPalette(next);
-                  }}
-                  style={{ ...topButtonStyle, justifyContent: 'flex-start', width: '100%' }}
-                >
-                  🖌️ {palette.charAt(0).toUpperCase() + palette.slice(1)}
-                </button>
               </div>
             )}
           </div>
@@ -1079,6 +1090,20 @@ const Flow = () => {
           />
         )}
       </ReactFlow>
+      <div style={{
+        position: 'absolute',
+        bottom: '10px',
+        right: '10px',
+        zIndex: 5,
+        pointerEvents: 'none',
+        opacity: isExporting ? 1.0 : 0.3,
+        fontSize: '10px',
+        fontWeight: 'bold',
+        color: textColor,
+        fontFamily: "'Inter', sans-serif"
+      }}>
+        {isExporting ? 'Created by SQL DAG Flow' : 'Developed by @DSandovalflavio'}
+      </div>
     </div>
   );
 };
