@@ -9,7 +9,7 @@ from sqlglot import exp
 import networkx as nx
 import re
 
-def parse_sql_files(directory, allowed_subfolders=None):
+def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
     """
     Recursively scans a directory for .sql files and parses them.
     Returns a dictionary mapping table names to their dependencies and metadata.
@@ -111,7 +111,7 @@ def parse_sql_files(directory, allowed_subfolders=None):
                 
                 try:
                     # Parse with BigQuery dialect to support CREATE OR REPLACE TABLE/VIEW
-                    parsed = sqlglot.parse_one(sql_content, read="bigquery")
+                    parsed = sqlglot.parse_one(sql_content, read=dialect)
                     
                     # Detect Node Type (Table or View)
                     node_type = "table" # default

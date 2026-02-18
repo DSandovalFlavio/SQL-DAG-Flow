@@ -33,12 +33,12 @@ CURRENT_DIRECTORY = os.getcwd() # Default, updated by start()
 DIAGRAM_FILE = "sql_diagram.json"
 
 @app.get("/graph")
-def get_graph():
+def get_graph(dialect: str = "bigquery"):
     """Parses SQL files in the current directory and returns graph data."""
     if not os.path.exists(CURRENT_DIRECTORY):
         return {"nodes": [], "edges": [], "error": "Directory not found"}
         
-    tables = parse_sql_files(CURRENT_DIRECTORY)
+    tables = parse_sql_files(CURRENT_DIRECTORY, dialect=dialect)
     nodes, edges = build_graph(tables)
     return {"nodes": nodes, "edges": edges}
 
@@ -90,7 +90,8 @@ def get_filtered_graph(data: dict = Body(...)):
         return {"nodes": [], "edges": [], "error": "Directory not found"}
     
     subfolders = data.get("subfolders") # List of strings or None
-    tables = parse_sql_files(CURRENT_DIRECTORY, allowed_subfolders=subfolders)
+    dialect = data.get("dialect", "bigquery")
+    tables = parse_sql_files(CURRENT_DIRECTORY, allowed_subfolders=subfolders, dialect=dialect)
     nodes, edges = build_graph(tables)
     return {"nodes": nodes, "edges": edges}
 

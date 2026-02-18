@@ -45,90 +45,75 @@ Created by **@dsandovalflavio**.
 
 ## 📋 Prerequisites
 
-*   **Python**: 3.8+ (for the backend parser)
-*   **Node.js**: 16+ (for the frontend visualization)
+*   **Python**: 3.8+
+*   **Node.js**: 16+ (Only required for *development* of the frontend)
 
 ## 🛠️ Project Structure
 
-**SQL DAG Flow** is optimized for the Medallion structure but flexible enough for any layout:
+**SQL DAG Flow** is structured as a standard Python package:
 
 ```text
-my-data-project/
-├── bronze/
-│   ├── raw_users.sql
-│   └── ...
-├── silver/
-│   ├── cleaned_users.sql
-│   └── ...
-└── gold/
-    ├── user_stats.sql
-    └── ...
+sql-dag-flow/
+├── src/
+│   └── sql_dag_flow/
+│       ├── static/      # Compiled React Frontend
+│       ├── main.py      # Entry point
+│       └── parser.py    # SQL Parser
+├── pyproject.toml       # Package Configuration
+└── README.md
 ```
 
 ## 📦 Installation & Setup
 
-### 1. Backend Setup
+### 🚀 User Installation (Recommended)
 
-Navigate to the `backend` folder and install Python dependencies.
-
-```bash
-cd backend
-pip install -r requirements.txt
-```
-
-### 2. Frontend Setup
-
-Navigate to the `frontend` folder and install Node dependencies.
+Install the tool directly via `pip`. This will command-line tool `sql-dag-flow` to your system.
 
 ```bash
-cd frontend
-npm install
+# From source directory
+pip install .
 ```
 
-## ▶️ Installation & Usage
+### 🛠️ Developer Setup
 
-### 🚀 Recommended: Python Package
+If you want to contribute to the codebase:
 
-This tool is designed to be installed as a Python package, similar to `dbt` or `duckdb`.
-
-1.  **Install**:
-    Navigate to the project root and install it via `pip`:
+1.  **Clone the repository**.
+2.  **Install in Editable Mode**:
     ```bash
-    pip install .
-    # Or for editable mode (if developing):
     pip install -e .
     ```
-
-2.  **Run**:
-    Once installed, you can use the `sql-dag-flow` command freely in your terminal:
-
+3.  **Frontend Development** (Optional):
+    If you need to modify the UI:
     ```bash
-    # Visualization the current directory
-    sql-dag-flow
-
-    # Visualize a specific project
-    sql-dag-flow /path/to/my/sql/project
+    cd frontend
+    npm install
+    npm run dev  # Starts dev server on port 5173
     ```
 
-    *Note: Ensure your Python Scripts folder is in your PATH if the command is not found.*
+## ▶️ Usage
 
-### 🛠️ Development Mode (Legacy)
+Once installed, use the CLI command from anywhere:
 
-If you want to modify the frontend code:
+```bash
+# Open the current directory
+sql-dag-flow
 
-1.  **Backend**: `python -m src.sql_dag_flow.main`
-2.  **Frontend**: `cd frontend && npm run dev`
+# Open a specific project
+sql-dag-flow /path/to/my/sql/project
+```
 
-## 🎮 Usage
+### Features Review
 
-1.  The browser should open automatically.
-2.  If not, navigate to `http://localhost:8000`.
-3.  **Open Project**: Click **Open** in the top bar and enter your SQL project path (if not already passed via CLI).
-4.  **Select Folders**: Choose which subfolders to include in your visualization.
+*   **Interactive Graph**: Zoom, pan, and drag nodes.
+*   **Filtering**: Select specific subfolders to analyze.
+*   **Search**: Find tables quickly using the sidebar.
+*   **Export**: Save your diagram as PNG or SVG.
+*   **Config**: Save and load your layout configurations.
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to verify the `LICENSE` and submit a Pull Request.
+Contributions are welcome! Please verify the `LICENSE` and submit a Pull Request.
 
 ---
 *Developed with ❤️ by [@dsandovalflavio](https://github.com/dsandovalflavio)*

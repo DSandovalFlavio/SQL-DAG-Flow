@@ -13,8 +13,10 @@ import FolderSelectorModal from './FolderSelectorModal';
 import {
   Menu, Layout,
   FolderOpen, FilePlus, Save, Image, Ruler,
-  Moon, Sun, Eye, EyeOff, Grid, MessageSquare, BoxSelect, Settings
+  Moon, Sun, Eye, EyeOff, Grid, MessageSquare, BoxSelect, Settings,
+  Hand, MousePointer2
 } from 'lucide-react';
+import SelectionToolbar from './SelectionToolbar';
 
 // Layout function using Dagre
 const getLayoutedElements = (nodes, edges, direction = 'LR') => {
@@ -58,15 +60,20 @@ const Flow = () => {
   const [theme, setTheme] = useState('dark');
   const [nodeStyle, setNodeStyle] = useState('full');
   const [palette, setPalette] = useState('standard');
+  const [dialect, setDialect] = useState('bigquery');
   const [selectedNode, setSelectedNode] = useState(null);
   const [detailsNode, setDetailsNode] = useState(null); // Separate state for side panel
+  const [selectionMode, setSelectionMode] = useState('pan'); // 'pan' or 'select'
+  const [contextMenu, setContextMenu] = useState(null); // { x, y }
   const [title, setTitle] = useState("SQL DAG Flow");
   const [subtitle, setSubtitle] = useState("Medallion Architecture Visualizer");
   const [currentPath, setCurrentPath] = useState('');
   const [rfInstance, setRfInstance] = useState(null);
 
   const edgesRef = useRef([]);
+  const nodesRef = useRef([]);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
 
   // New Features State
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -86,17 +93,58 @@ const Flow = () => {
 
   const nodeTypes = useMemo(() => ({ custom: CustomNode, annotation: AnnotationNode }), []);
 
+  const onPaneContextMenu = useCallback((event) => {
+    event.preventDefault();
+    setContextMenu(null); // Close if clicking on empty pane
+  }, []);
+
   const onNodeContextMenu = useCallback((event, nodeData) => {
     event.preventDefault(); // Prevent native context menu
-    setSelectedNode(nodeData); // Highlight on right click too
-    setDetailsNode(nodeData);  // Open details panel
-  }, []);
+
+    // Check if multiple nodes are selected using Ref to avoid dependency loop
+    const currentNodes = nodesRef.current;
+    const selectedNodes = currentNodes.filter(n => n.selected);
+
+    if (selectedNodes.length > 1 && selectedNodes.some(n => n.id === nodeData.id)) {
+      // Do nothing, let the toolbar handle it
+      setContextMenu(null);
+    } else {
+      // Single node context menu -> Open details
+      setSelectedNode(nodeData);
+      setDetailsNode(nodeData);
+      setContextMenu(null);
+    }
+  }, []); // Removed nodes dependency
 
   const onEdit = useCallback((nodeData) => {
     // For annotations, usually just select
     setSelectedNode(nodeData);
     setDetailsNode(nodeData); // Also open details panel for editing
+    setContextMenu(null);
   }, []);
+
+  const alignNodes = (direction) => {
+    const selectedNodes = nodes.filter((n) => n.selected);
+    if (selectedNodes.length < 2) return;
+
+    let newNodes = [...nodes];
+
+    if (direction === 'horizontal') {
+      const avgX = selectedNodes.reduce((acc, n) => acc + n.position.x, 0) / selectedNodes.length;
+      newNodes = newNodes.map((n) => {
+        if (n.selected) return { ...n, position: { ...n.position, x: avgX } };
+        return n;
+      });
+    } else if (direction === 'vertical') {
+      const avgY = selectedNodes.reduce((acc, n) => acc + n.position.y, 0) / selectedNodes.length;
+      newNodes = newNodes.map((n) => {
+        if (n.selected) return { ...n, position: { ...n.position, y: avgY } };
+        return n;
+      });
+    }
+    setNodes(newNodes);
+    setContextMenu(null);
+  };
 
   // Node Hiding Logic
   const handleHideNode = useCallback((nodeId, mode) => {
@@ -159,11 +207,12 @@ const Flow = () => {
         if (data.metadata.subtitle) setSubtitle(data.metadata.subtitle);
         if (data.metadata.nodeStyle) setNodeStyle(data.metadata.nodeStyle);
         if (data.metadata.palette) setPalette(data.metadata.palette);
+        if (data.metadata.dialect) setDialect(data.metadata.dialect);
         if (data.metadata.hiddenNodeIds) setHiddenNodeIds(data.metadata.hiddenNodeIds);
       }
       setCurrentConfigFile(filename); // Update current config file
     }
-  }, [setNodes, setEdges, rfInstance, visibleLayers, onNodeContextMenu, onEdit, handleHideNode, theme, nodeStyle, palette, showCounts]);
+  }, [setNodes, setEdges, rfInstance, visibleLayers, onNodeContextMenu, onEdit, handleHideNode, theme, nodeStyle, palette, showCounts, dialect]);
 
   // ... (Effect hooks) ...
 
@@ -177,7 +226,7 @@ const Flow = () => {
 
 
 
-  // Update nodes when theme, nodeStyle, palette, or visibleLayers OR hiddenNodeIds changes
+  // 1. Update Nodes (Theme, Style, Palette, Layers, Hidden)
   useEffect(() => {
     setNodes((nds) =>
       nds.map((node) => {
@@ -185,32 +234,38 @@ const Flow = () => {
         const isManuallyHidden = hiddenNodeIds.includes(node.id);
         const isHidden = !isLayerVisible || isManuallyHidden;
 
+        // Check if data actually needs update to avoid unnecessary re-renders (optimization)
+        let newData = { ...node.data };
+        let changed = false;
+
+        if (newData.theme !== theme) { newData.theme = theme; changed = true; }
+        if (newData.styleMode !== nodeStyle) { newData.styleMode = nodeStyle; changed = true; }
+        if (newData.palette !== palette) { newData.palette = palette; changed = true; }
+        if (newData.showCounts !== showCounts) { newData.showCounts = showCounts; changed = true; }
+        // functions usually stable but good to ensure
+        newData.onContextMenu = onNodeContextMenu;
+        newData.onHide = handleHideNode;
+        newData.onEdit = onEdit;
+
+        if (node.hidden === isHidden && !changed) return node;
+
         let updatedNode = {
           ...node,
           hidden: isHidden
         };
 
         if (node.type === 'custom') {
-          updatedNode.data = {
-            ...node.data,
-            theme,
-            styleMode: nodeStyle,
-            palette,
-            showCounts,
-            onContextMenu: onNodeContextMenu,
-            onHide: handleHideNode // Pass hide handler
-          };
+          updatedNode.data = newData;
         } else if (node.type === 'annotation') {
-          updatedNode.data = {
-            ...node.data,
-            theme,
-            onEdit: onEdit
-          };
+          updatedNode.data = { ...node.data, theme, onEdit };
         }
         return updatedNode;
       })
     );
+  }, [theme, nodeStyle, palette, visibleLayers, showCounts, hiddenNodeIds]);
 
+  // 2. Update Edges (Selection Highlight)
+  useEffect(() => {
     setEdges((eds) =>
       eds.map(edge => {
         const isIncoming = selectedNode && edge.target === selectedNode.id;
@@ -220,38 +275,48 @@ const Flow = () => {
         let strokeWidth = 1;
         let opacity = 1;
         let animated = false;
+        let zIndex = 0;
 
         if (selectedNode) {
           if (isIncoming) {
-            // Incoming (dependency)
-            stroke = theme === 'dark' ? '#00b4d8' : '#0077b6'; // Cyan-Blue / Dark Blue
+            stroke = theme === 'dark' ? '#00b4d8' : '#0077b6';
             strokeWidth = 3;
             opacity = 1;
             animated = true;
+            zIndex = 10;
           } else if (isOutgoing) {
-            // Outgoing (impact)
-            stroke = theme === 'dark' ? '#ff4d6d' : '#c9184a'; // Soft Pink / Deep Red
+            stroke = theme === 'dark' ? '#ff4d6d' : '#c9184a';
             strokeWidth = 3;
             opacity = 1;
             animated = true;
+            zIndex = 10;
           } else {
-            opacity = 0.1; // Dim unrelated
+            opacity = 0.1;
             stroke = '#555';
             animated = false;
           }
         } else {
-          // Default state (no selection) - keep edges subtle but visible
-          // Increase visibility as requested
           stroke = theme === 'dark' ? '#666' : '#999';
-          strokeWidth = 2; // Thicker default lines
+          strokeWidth = 2;
           opacity = theme === 'dark' ? 0.8 : 0.8;
           animated = false;
+        }
+
+        // Only update if changed
+        if (
+          edge.style?.stroke === stroke &&
+          edge.style?.strokeWidth === strokeWidth &&
+          edge.style?.opacity === opacity &&
+          edge.animated === animated &&
+          edge.zIndex === zIndex
+        ) {
+          return edge;
         }
 
         return {
           ...edge,
           animated,
-          zIndex: (isIncoming || isOutgoing) ? 10 : 0,
+          zIndex,
           style: {
             ...edge.style,
             stroke,
@@ -261,8 +326,7 @@ const Flow = () => {
         };
       })
     );
-
-  }, [theme, nodeStyle, palette, visibleLayers, showCounts, hiddenNodeIds, setNodes, onNodeContextMenu, onEdit, handleHideNode, setEdges, selectedNode]);
+  }, [theme, selectedNode, setEdges]);
 
   // Initial Load
   useEffect(() => {
@@ -308,9 +372,9 @@ const Flow = () => {
 
     let data;
     if (subfolders) {
-      data = await fetchFilteredGraph(subfolders);
+      data = await fetchFilteredGraph(subfolders, dialect);
     } else {
-      data = await fetchGraph();
+      data = await fetchGraph({ dialect });
     }
 
     if (data.error) return;
@@ -353,6 +417,7 @@ const Flow = () => {
         theme,
         nodeStyle,
         palette,
+        dialect,
         title,
         subtitle,
         path: currentPath,
@@ -634,6 +699,8 @@ const Flow = () => {
       />
 
 
+
+
       {/* Bottom Floating Toolbar */}
       {!isExporting && (
         <div style={{
@@ -690,6 +757,32 @@ const Flow = () => {
                   {nodeStyle === 'full' ? '🎨 Full' : '⭕ Minimal'}
                 </button>
 
+                <div style={{ fontSize: '11px', fontWeight: 'bold', color: textColor, opacity: 0.7, marginTop: '4px' }}>DIALECT</div>
+                <select
+                  value={dialect}
+                  onChange={(e) => {
+                    setDialect(e.target.value);
+                    // Trigger refresh with new dialect
+                    setTimeout(() => refreshGraphData(), 0);
+                  }}
+                  style={{
+                    ...topButtonStyle,
+                    width: '100%',
+                    background: theme === 'dark' ? '#222' : '#fff',
+                    border: `1px solid ${borderColor}`,
+                    outline: 'none',
+                    appearance: 'none', // Remove default arrow if desired, or keep it
+                    padding: '6px'
+                  }}
+                >
+                  <option value="bigquery">BigQuery</option>
+                  <option value="snowflake">Snowflake</option>
+                  <option value="postgres">PostgreSQL</option>
+                  <option value="spark">SparkSQL</option>
+                  <option value="redshift">Redshift</option>
+                  <option value="duckdb">DuckDB</option>
+                </select>
+
                 <div style={{ fontSize: '11px', fontWeight: 'bold', color: textColor, opacity: 0.7, marginTop: '4px' }}>PALETTE</div>
                 <button
                   onClick={() => {
@@ -737,6 +830,36 @@ const Flow = () => {
                 {layer.label}
               </button>
             ))}
+          </div>
+
+          <div style={{ width: 1, height: 20, background: borderColor }}></div>
+
+          {/* Selection Mode Toggle */}
+          <div style={{ display: 'flex', background: theme === 'dark' ? '#333' : '#ddd', borderRadius: '8px', padding: '2px' }}>
+            <button
+              onClick={() => setSelectionMode('pan')}
+              title="Pan Mode (Hand)"
+              style={{
+                ...bottomButtonStyle,
+                background: selectionMode === 'pan' ? (theme === 'dark' ? '#555' : '#fff') : 'transparent',
+                boxShadow: selectionMode === 'pan' ? '0 2px 5px rgba(0,0,0,0.2)' : 'none',
+                padding: '6px'
+              }}
+            >
+              <Hand size={18} />
+            </button>
+            <button
+              onClick={() => setSelectionMode('select')}
+              title="Select Mode (Box)"
+              style={{
+                ...bottomButtonStyle,
+                background: selectionMode === 'select' ? (theme === 'dark' ? '#555' : '#fff') : 'transparent',
+                boxShadow: selectionMode === 'select' ? '0 2px 5px rgba(0,0,0,0.2)' : 'none',
+                padding: '6px'
+              }}
+            >
+              <MousePointer2 size={18} />
+            </button>
           </div>
 
           <div style={{ width: 1, height: 20, background: borderColor }}></div>
@@ -866,6 +989,15 @@ const Flow = () => {
         </div>
       )}
 
+      <SelectionToolbar
+        selectedCount={nodes.filter(n => n.selected).length}
+        onAlign={alignNodes}
+        onClearSelection={() => {
+          setNodes(nds => nds.map(n => ({ ...n, selected: false })));
+        }}
+        theme={theme}
+      />
+
       {/* Config List Modal */}
       {configListModalOpen && (
         <div style={{
@@ -921,6 +1053,11 @@ const Flow = () => {
           setSelectedNode(prev => (prev && prev.id === node.id) ? null : node.data);
           setDetailsNode(null); // Close details on left click
         }}
+        panOnDrag={selectionMode === 'pan'}
+        selectionOnDrag={selectionMode === 'select'}
+        panOnScroll={true}
+        selectionMode={selectionMode === 'select' ? 'partial' : undefined}
+        onPaneContextMenu={onPaneContextMenu}
         nodeTypes={nodeTypes}
         fitView
         colorMode={theme}

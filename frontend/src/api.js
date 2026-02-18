@@ -1,6 +1,7 @@
 const API_URL = 'http://localhost:8000';
 
-export const fetchGraph = async (config) => {
+// config can be an object { dialect: '...' }
+export const fetchGraph = async (config = {}) => {
     try {
         const queryParams = new URLSearchParams(config).toString();
         const response = await fetch(`${API_URL}/graph?${queryParams}`);
@@ -88,12 +89,13 @@ export const scanFolders = async (path) => {
     }
 };
 
-export const fetchFilteredGraph = async (subfolders) => {
+// subfolders is array, dialect is string
+export const fetchFilteredGraph = async (subfolders, dialect = 'bigquery') => {
     try {
         const response = await fetch(`${API_URL}/graph/filtered`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ subfolders }),
+            body: JSON.stringify({ subfolders, dialect }),
         });
         return await response.json();
     } catch (error) {
