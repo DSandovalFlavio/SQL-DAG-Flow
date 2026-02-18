@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: sql-dag-flow
-Version: 0.1.0
+Version: 0.1.1
 Summary: A sophisticated SQL lineage visualization tool for Medallion Architectures.
 Author-email: Flavio Sandoval <dsandovalflavio@gmail.com>
 License: MIT
@@ -25,9 +25,36 @@ Dynamic: license-file
 
 # SQL DAG Flow
 
-**SQL DAG Flow** is a powerful, open-source visualization tool designed to automatically map and visualize the lineage of your SQL data pipelines.
+# SQL DAG Flow
 
-Built specifically for modern data stacks using the **Medallion Architecture** (Bronze, Silver, Gold), it parses your SQL files to generate an interactive, dependency-aware Directed Acyclic Graph (DAG).
+> **"Static Data Lineage for Modern Data Engineers. No databases, just code."**
+
+**SQL DAG Flow** is a lightweight, open-source Python library designed to transform your SQL code into visual architecture.
+
+Unlike traditional lineage tools that require active database connections or query log access, **SQL DAG Flow** performs **static analysis (parsing)** of your local `.sql` files. This allows for instant, secure dependency visualization, bottleneck identification, and Data Lineage documentation without leaving your development environment.
+
+Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) and modern stacks (DuckDB, BigQuery, Snowflake), it bridges the gap between the code you write and the architecture you design.
+
+## 💡 Philosophy: Why this exists
+
+*   **Local-First & Zero-Config**: You don't need to configure servers, cloud credentials, or Docker containers. If you have SQL files, you have a diagram.
+*   **Security by Design**: By relying on static analysis, your code never leaves your machine and no access to sensitive production data is required.
+*   **Living Documentation**: The diagram is generated *from* the code. If the code changes, the documentation updates, eliminating obsolete manually-drawn diagrams.
+
+## 🎯 Objectives & Use Cases
+
+*   **1. Legacy Code Audit & Refactoring**:
+    *   *The Problem*: You join a new project with 200+ undocumented SQL scripts. Nobody knows what breaks what.
+    *   *The Solution*: Run `sql-dag-flow` to instantly map the "spaghetti" dependencies. Identify orphan tables, circular dependencies, and the impact of changing a Silver layer table.
+*   **2. Automated Architecture Documentation**:
+    *   *The Problem*: Architecture diagrams in Lucidchart or Visio are always outdated.
+    *   *The Solution*: Generate interactive pipeline visualizations (ETL/ELT) to include in your Pull Requests, Wikis, or client deliverables.
+*   **3. Medallion Architecture Validation**:
+    *   *The Problem*: It's hard to verify if the logical separation of layers (Bronze → Silver → Gold) is being respected.
+    *   *The Solution*: The tool visually groups your scripts by folder structure, allowing you to validate that data flows correctly between quality layers without improper "jumps".
+*   **4. Accelerated Onboarding**:
+    *   *The Problem*: Explaining data flow to new engineers takes hours of whiteboard drawing.
+    *   *The Solution*: Deliver an interactive map where new team members can explore where data comes from, view associated SQL code, and understand business logic without reading thousands of lines of code.
 
 ![SQL DAG Flow Screenshot](/images/sql-architecture-logo.png)
 
