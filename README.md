@@ -4,36 +4,35 @@
 
 Built specifically for modern data stacks using the **Medallion Architecture** (Bronze, Silver, Gold), it parses your SQL files to generate an interactive, dependency-aware Directed Acyclic Graph (DAG).
 
-Created by **@dsandovalflavio**.
-
 ![SQL DAG Flow Screenshot](/images/sql-architecture-logo.png)
 
 ## 🚀 Key Features
 
 *   **Automatic Parsing & Visualization**: Recursively scans your project folders to find `.sql` files and detect dependencies (`FROM`, `JOIN`, `CTE`s) using `sqlglot`.
-*   **Medallion Architecture Support**: Automatically categories and colors nodes based on folder structure (Bronze 🟤, Silver ⚪, Gold 🟡).
+*   **Medallion Architecture Support**: Automatically categorizes and colors nodes based on folder structure:
+    *   🟤 **Bronze**: Raw ingestion layers.
+    *   ⚪ **Silver**: Cleaned and conformed data.
+    *   🟡 **Gold**: Business-level aggregates.
 *   **Smart Folder Selection**:
-    *   **Selective Exploration**: Choose specific subfolders to scan using an interactive tree view.
-    *   **Deep Filtering**: Include/exclude nested folders to focus only on relevant parts of your pipeline.
-*   **Advanced Graph Controls**:
+    *   **Selective Exploration**: Choose specific subfolders to analyze using an interactive tree view.
+    *   **Deep Filtering**: Focus only on relevant parts of your pipeline.
+*   **Advanced Organization**:
+    *   **Selection Toolbar**: Multi-select nodes and align them horizontally/vertically.
     *   **Node Hiding**: Hide specific nodes or entire trees to declutter the view.
-    *   **Auto Layout**: Automatically arrange nodes for optimal readability with one click.
-    *   **Interactive Sidebar**: Search, filter, and manage visibility of all nodes from a dedicated panel.
+    *   **Auto Layout**: Automatically arrange nodes using Dagre layout engine.
 *   **Configuration Management**:
-    *   **Save & Load**: Save your current layout, hidden nodes, and viewport state to JSON files.
-    *   **Workspaces**: Switch between different project configurations easily.
-*   **Rich Metadata & Annotations**:
-    *   **Details Panel**: View full SQL content, schema details, and dependency statistics.
-    *   **Annotations**: Add sticky notes and visual groups to document your architecture directly on the canvas.
+    *   **Save & Load**: Persist your layouts, hidden nodes, and viewport settings to JSON.
+    *   **Workspaces**: manage multiple project configurations.
+*   **Rich Metadata**:
+    *   **Details Panel**: View full SQL content and schema details.
+    *   **Annotations**: Add sticky notes and groups to document your architecture.
 *   **Premium UI/UX**:
-    *   **Theme Support**: Toggle between Light ☀️ and Dark 🌙 modes.
-    *   **Customizable Views**: Switch between "Full" and "Minimal" node styles.
-    *   **HD Export**: Export your diagram as high-resolution **PNG** or vector **SVG** for presentations.
+    *   **Dark/Light Modes**: Themed for your preference.
+    *   **Export**: Save as high-resolution **PNG** or vector **SVG**.
 
 ## 🌍 Supported Dialects
 
-**SQL DAG Flow** uses the robust `sqlglot` library, supporting a wide range of SQL dialects:
-
+Powered by `sqlglot`, supporting:
 *   **BigQuery** (Default)
 *   **Snowflake**
 *   **PostgreSQL**
@@ -41,79 +40,70 @@ Created by **@dsandovalflavio**.
 *   **Amazon Redshift**
 *   **DuckDB**
 *   **MySQL**
-*   ...and many more!
+*   ...and more.
 
-## 📋 Prerequisites
+## 📦 Installation
 
-*   **Python**: 3.8+
-*   **Node.js**: 16+ (Only required for *development* of the frontend)
-
-## 🛠️ Project Structure
-
-**SQL DAG Flow** is structured as a standard Python package:
-
-```text
-sql-dag-flow/
-├── src/
-│   └── sql_dag_flow/
-│       ├── static/      # Compiled React Frontend
-│       ├── main.py      # Entry point
-│       └── parser.py    # SQL Parser
-├── pyproject.toml       # Package Configuration
-└── README.md
-```
-
-## 📦 Installation & Setup
-
-### 🚀 User Installation (Recommended)
-
-Install the tool directly via `pip`. This will command-line tool `sql-dag-flow` to your system.
+Install easily via `pip`:
 
 ```bash
-# From source directory
-pip install .
+pip install sql-dag-flow
 ```
-
-### 🛠️ Developer Setup
-
-If you want to contribute to the codebase:
-
-1.  **Clone the repository**.
-2.  **Install in Editable Mode**:
-    ```bash
-    pip install -e .
-    ```
-3.  **Frontend Development** (Optional):
-    If you need to modify the UI:
-    ```bash
-    cd frontend
-    npm install
-    npm run dev  # Starts dev server on port 5173
-    ```
 
 ## ▶️ Usage
 
-Once installed, use the CLI command from anywhere:
+### 1. Command Line Interface (CLI)
+
+You can run the tool directly from your terminal:
 
 ```bash
-# Open the current directory
+# Analyze the current directory
 sql-dag-flow
 
-# Open a specific project
-sql-dag-flow /path/to/my/sql/project
+# Analyze a specific SQL project
+sql-dag-flow /path/to/my/dbt_project
 ```
 
-### Features Review
+### 2. Python API
 
-*   **Interactive Graph**: Zoom, pan, and drag nodes.
-*   **Filtering**: Select specific subfolders to analyze.
-*   **Search**: Find tables quickly using the sidebar.
-*   **Export**: Save your diagram as PNG or SVG.
-*   **Config**: Save and load your layout configurations.
+Integrate it into your Python scripts or notebooks:
+
+```python
+from sql_dag_flow import start
+
+# Start the server and open the browser
+start(directory="./my_sql_project")
+```
+
+## 📂 Project Structure Expectations
+
+SQL DAG Flow is opinionated but flexible. It looks for standard Medallion Architecture naming conventions to assign colors:
+
+*   **Bronze Layer**: Any folder named `bronze`, `raw`, `landing`, or `staging`.
+*   **Silver Layer**: Any folder named `silver`, `intermediate`, or `conformed`.
+*   **Gold Layer**: Any folder named `gold`, `mart`, `serving`, or `presentation`.
+*   **Other**: Any other folder is categorized as "Other" (Gray).
+
+## 🛠️ Configuration & Customization
+
+### Settings
+Click the **Settings (Gear)** icon in the bottom toolbar to:
+*   **Change SQL Dialect**: Ensure your specific SQL syntax is parsed correctly.
+*   **Toggle Node Style**: Switch between "Full" (colored body) and "Minimal" (colored border) styles.
+*   **Change Palette**: Switch between Standard, Vivid, and Pastel color palettes.
+
+### Saving Layouts
+Your graph layout (positions, hidden nodes) is **not** permanent by default. To save your work:
+1.  Click **Save** in the top bar.
+2.  Choose a filename (e.g., `marketing_flow.json`).
+3.  Next time, click **Load** to restore that exact view.
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please verify the `LICENSE` and submit a Pull Request.
+Contributions are welcome!
+1.  Fork the repository.
+2.  Create a feature branch.
+3.  Submit a Pull Request.
 
 ---
-*Developed with ❤️ by [@dsandovalflavio](https://github.com/dsandovalflavio)*
+*Created by [Flavio Sandoval](https://github.com/dsandovalflavio)*
