@@ -1,7 +1,5 @@
 # SQL DAG Flow
 
-# SQL DAG Flow
-
 > **"Static Data Lineage for Modern Data Engineers. No databases, just code."**
 
 **SQL DAG Flow** is a lightweight, open-source Python library designed to transform your SQL code into visual architecture.
