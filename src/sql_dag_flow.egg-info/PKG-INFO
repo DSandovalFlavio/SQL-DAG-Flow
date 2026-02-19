@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: sql-dag-flow
-Version: 0.1.4
+Version: 0.1.5
 Summary: A sophisticated SQL lineage visualization tool for Medallion Architectures.
 Author-email: Flavio Sandoval <dsandovalflavio@gmail.com>
 License: MIT
@@ -106,6 +106,12 @@ Install easily via `pip`:
 
 ```bash
 pip install sql-dag-flow
+```
+
+To update to the latest version:
+
+```bash
+pip install --upgrade sql-dag-flow
 ```
 
 ## ▶️ Usage
