@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Database, Table, FileText, Layers, Eye } from 'lucide-react';
+import { Database, Table, FileText, Layers, Eye, Globe } from 'lucide-react';
 
 const CustomNode = ({ id, data }) => {
     const { label, layer, details, theme = 'dark', styleMode = 'full', onContextMenu } = data;
@@ -14,6 +14,7 @@ const CustomNode = ({ id, data }) => {
             case 'bronze': return '#cd7f32';
             case 'silver': return '#A0A0A0';
             case 'gold': return '#FFD700';
+            case 'external': return '#ff9f1c'; // distinct orange-ish for external
             default: return '#4CA1AF';
         }
     };
@@ -22,9 +23,9 @@ const CustomNode = ({ id, data }) => {
         const palette = data.palette || 'standard';
 
         const colors = {
-            standard: { bronze: '#8B4513', silver: '#708090', gold: '#DAA520', default: '#2F4F4F' },
-            vivid: { bronze: '#D35400', silver: '#3498DB', gold: '#F1C40F', default: '#8E44AD' },
-            pastel: { bronze: '#E6B0AA', silver: '#AED6F1', gold: '#F9E79F', default: '#D7BDE2' }
+            standard: { bronze: '#8B4513', silver: '#708090', gold: '#DAA520', external: '#e67e22', default: '#2F4F4F' },
+            vivid: { bronze: '#D35400', silver: '#3498DB', gold: '#F1C40F', external: '#ff9f1c', default: '#8E44AD' },
+            pastel: { bronze: '#E6B0AA', silver: '#AED6F1', gold: '#F9E79F', external: '#fad7a0', default: '#D7BDE2' }
         };
 
         const selectedPalette = colors[palette] || colors.standard;
@@ -33,6 +34,7 @@ const CustomNode = ({ id, data }) => {
             case 'bronze': return selectedPalette.bronze;
             case 'silver': return selectedPalette.silver;
             case 'gold': return selectedPalette.gold;
+            case 'external': return selectedPalette.external;
             default: return selectedPalette.default;
         }
     };
@@ -57,6 +59,7 @@ const CustomNode = ({ id, data }) => {
             case 'bronze': return <Database size={16} color={iconColor} />;
             case 'silver': return <Table size={16} color={iconColor} />;
             case 'gold': return <Layers size={16} color={iconColor} />;
+            case 'external': return <Globe size={16} color={iconColor} />;
             default: return <FileText size={16} color={iconColor} />;
         }
     }

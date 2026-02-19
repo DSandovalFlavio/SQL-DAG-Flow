@@ -33,13 +33,13 @@ CURRENT_DIRECTORY = os.getcwd() # Default, updated by start()
 DIAGRAM_FILE = "sql_diagram.json"
 
 @app.get("/graph")
-def get_graph(dialect: str = "bigquery"):
+def get_graph(dialect: str = "bigquery", discovery: bool = False):
     """Parses SQL files in the current directory and returns graph data."""
     if not os.path.exists(CURRENT_DIRECTORY):
         return {"nodes": [], "edges": [], "error": "Directory not found"}
         
     tables = parse_sql_files(CURRENT_DIRECTORY, dialect=dialect)
-    nodes, edges = build_graph(tables)
+    nodes, edges = build_graph(tables, discovery_mode=discovery)
     return {"nodes": nodes, "edges": edges}
 
 @app.post("/config/path")
@@ -91,8 +91,10 @@ def get_filtered_graph(data: dict = Body(...)):
     
     subfolders = data.get("subfolders") # List of strings or None
     dialect = data.get("dialect", "bigquery")
+    discovery = data.get("discovery", False)
+    
     tables = parse_sql_files(CURRENT_DIRECTORY, allowed_subfolders=subfolders, dialect=dialect)
-    nodes, edges = build_graph(tables)
+    nodes, edges = build_graph(tables, discovery_mode=discovery)
     return {"nodes": nodes, "edges": edges}
 
 @app.get("/config/path")
@@ -160,6 +162,36 @@ def list_config_files(path: str = "."):
     except Exception as e:
         print(f"Error listing config files: {e}")
         return {"files": []}
+
+class CreateFileRequest(BaseModel):
+    path: str
+    content: str
+
+@app.post("/files/create")
+def create_file(request: CreateFileRequest):
+    try:
+        # validation: ensure path is within project directory to prevent security issues
+        # loose check: must not contain ..
+        if ".." in request.path:
+             raise HTTPException(status_code=400, detail="Invalid path")
+
+        full_path = os.path.join(CURRENT_DIRECTORY, request.path)
+        
+        # Create directories if they don't exist
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        
+        if os.path.exists(full_path):
+             raise HTTPException(status_code=400, detail="File already exists")
+
+        with open(full_path, "w") as f:
+            f.write(request.content)
+            
+        return {"message": f"File created at {request.path}", "path": full_path}
+            
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Serve Static Files (Frontend)
 if os.path.exists(STATIC_DIR):

@@ -156,6 +156,12 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                     
                     dependencies = set()
                     
+                    # 1. Identify CTEs defined in the query to exclude them from dependencies
+                    defined_ctes = set()
+                    for cte in parsed.find_all(exp.CTE):
+                        if cte.alias_or_name:
+                            defined_ctes.add(cte.alias_or_name)
+                    
                     # Find all tables referenced in the query
                     for table in parsed.find_all(exp.Table):
                         dep_name = table.name
@@ -168,6 +174,10 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                         
                         # Avoid self-reference if it matches the target
                         if dep_name == target_table_name:
+                            continue
+                            
+                        # Avoid Internal CTE references
+                        if dep_name in defined_ctes:
                             continue
                             
                         # If we haven't found a CREATE statement, this might just be a SELECT
@@ -208,9 +218,11 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
     return tables
 
 
-def build_graph(tables):
+def build_graph(tables, discovery_mode=False):
     """
     Constructs nodes and edges for React Flow.
+    If discovery_mode is True, creates 'ghost' nodes for dependencies 
+    that are not found in the parsed tables.
     """
     nodes = []
     edges = []
@@ -235,6 +247,9 @@ def build_graph(tables):
     
     # Track incoming edges for accurate dependency counting
     incoming_edges_count = {node_id: 0 for node_id in tables}
+    
+    # Track missing dependencies if in discovery mode
+    missing_nodes = {}
 
     # Create edges first (conceptually) to count dependencies
     for source_id, data in tables.items():
@@ -256,15 +271,60 @@ def build_graph(tables):
                 })
                 incoming_edges_count[source_id] = incoming_edges_count.get(source_id, 0) + 1
             else:
-                 pass
+                 # Discovery Mode: Handle missing dependencies
+                 if discovery_mode and not target_id:
+                     # Create a unique ID for the missing node
+                     # Use the full dependency name as the ID
+                     ghost_id = dep
+                     
+                     if ghost_id not in missing_nodes:
+                         # Attempt to parse project/dataset from the dependency string
+                         parts = ghost_id.split('.')
+                         ghost_project = "default"
+                         ghost_dataset = "default"
+                         ghost_table = ghost_id
+                         
+                         if len(parts) == 3:
+                             ghost_project, ghost_dataset, ghost_table = parts
+                         elif len(parts) == 2:
+                             ghost_dataset, ghost_table = parts
+                         
+                         missing_nodes[ghost_id] = {
+                             "id": ghost_id,
+                             "label": ghost_table,
+                             "layer": "external", # Special layer for discovered nodes
+                             "type": "table",
+                             "project": ghost_project,
+                             "dataset": ghost_dataset,
+                             "path": "discovered",
+                             "dependencies": [],
+                             "content": "-- Discovered dependency"
+                         }
+                         
+                     # Add edge from ghost node to current node
+                     edges.append({
+                        "id": f"{ghost_id}-{source_id}",
+                        "source": ghost_id,
+                        "target": source_id,
+                        "animated": True,
+                        "style": {"stroke": "#ff9f1c", "strokeDasharray": "5,5"} # Distinct style
+                     })
+                     
+                     # Initialize incoming count for ghost node if not present (it captures its own incoming deps? no, it's a source usually)
+                     # But we should track if it has incoming edges? (Unlikely as we don't parse it)
+                     incoming_edges_count[source_id] = incoming_edges_count.get(source_id, 0) + 1
 
-    # Create nodes with edge count info
-    # First, build a NetworkX graph to calculate transitive dependencies (nested deps)
+
+    # Merge missing nodes into the main tables list for node creation
+    # We don't add them to 'tables' input to avoid side effects, just iterate for node creation
+    all_nodes_data = {**tables, **missing_nodes}
+    
+    # Recalculate G for all nodes including ghosts
     G = nx.DiGraph()
     for edge in edges:
         G.add_edge(edge["source"], edge["target"])
 
-    for table_name, data in tables.items():
+    for table_name, data in all_nodes_data.items():
         # Calculate nested dependencies (all ancestors in the dependency graph)
         nested_count = 0
         if G.has_node(table_name):

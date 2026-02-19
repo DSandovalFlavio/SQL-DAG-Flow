@@ -9,12 +9,13 @@ import CustomNode from './CustomNode';
 import AnnotationNode from './AnnotationNode';
 import Sidebar from './Sidebar';
 import FolderSelectorModal from './FolderSelectorModal';
+import FileCreationModal from './FileCreationModal';
 // 1. Update Imports
 import {
   Menu, Layout,
   FolderOpen, FilePlus, Save, Image, Ruler,
   Moon, Sun, Eye, EyeOff, Grid, MessageSquare, BoxSelect, Settings,
-  Hand, MousePointer2
+  Hand, MousePointer2, RefreshCw, Globe
 } from 'lucide-react';
 import SelectionToolbar from './SelectionToolbar';
 
@@ -61,6 +62,7 @@ const Flow = () => {
   const [nodeStyle, setNodeStyle] = useState('full');
   const [palette, setPalette] = useState('standard');
   const [dialect, setDialect] = useState('bigquery');
+  const [discoveryMode, setDiscoveryMode] = useState(false);
   const [selectedNode, setSelectedNode] = useState(null);
   const [detailsNode, setDetailsNode] = useState(null); // Separate state for side panel
   const [selectionMode, setSelectionMode] = useState('pan'); // 'pan' or 'select'
@@ -82,13 +84,16 @@ const Flow = () => {
   const [subfolderOptions, setSubfolderOptions] = useState([]);
   const [pendingPath, setPendingPath] = useState(null);
 
+  const [fileCreationModalOpen, setFileCreationModalOpen] = useState(false);
+  const [ghostNodeData, setGhostNodeData] = useState(null);
+
   // Config Management State
   const [currentConfigFile, setCurrentConfigFile] = useState("sql_diagram.json");
   const [configListModalOpen, setConfigListModalOpen] = useState(false);
   const [availableConfigs, setAvailableConfigs] = useState([]);
   const [viewSettingsOpen, setViewSettingsOpen] = useState(false);
 
-  const [visibleLayers, setVisibleLayers] = useState({ bronze: true, silver: true, gold: true, other: true });
+  const [visibleLayers, setVisibleLayers] = useState({ bronze: true, silver: true, gold: true, external: true, other: true });
   const [showCounts, setShowCounts] = useState(true);
 
   const nodeTypes = useMemo(() => ({ custom: CustomNode, annotation: AnnotationNode }), []);
@@ -112,6 +117,7 @@ const Flow = () => {
       // Single node context menu -> Open details
       setSelectedNode(nodeData);
       setDetailsNode(nodeData);
+      // setSidebarOpen(true); // User wants details panel (right), not node list sidebar (left)
       setContextMenu(null);
     }
   }, []); // Removed nodes dependency
@@ -208,6 +214,7 @@ const Flow = () => {
         if (data.metadata.nodeStyle) setNodeStyle(data.metadata.nodeStyle);
         if (data.metadata.palette) setPalette(data.metadata.palette);
         if (data.metadata.dialect) setDialect(data.metadata.dialect);
+        if (data.metadata.discoveryMode !== undefined) setDiscoveryMode(data.metadata.discoveryMode);
         if (data.metadata.hiddenNodeIds) setHiddenNodeIds(data.metadata.hiddenNodeIds);
       }
       setCurrentConfigFile(filename); // Update current config file
@@ -364,17 +371,15 @@ const Flow = () => {
     // eslint-disable-next-line
   }, []);
 
-  const refreshGraphData = async (subfolders = null) => {
-    // If subfolders is null, it typically means fetch all or standard behavior
-    // For now we use the filtered endpoint if subfolders is passed, or standard if not?
-    // Actually standard fetchGraph doesn't support subfolders argument in my previous implementation?
-    // Let's use fetchFilteredGraph if subfolders is an array, else fetchGraph
+  const refreshGraphData = async (subfolders = null, modeOverride = null) => {
+    // Mode override allows immediate refresh with new state before re-render
+    const currentMode = modeOverride !== null ? modeOverride : discoveryMode;
 
     let data;
     if (subfolders) {
-      data = await fetchFilteredGraph(subfolders, dialect);
+      data = await fetchFilteredGraph(subfolders, dialect, currentMode);
     } else {
-      data = await fetchGraph({ dialect });
+      data = await fetchGraph({ dialect, discovery: currentMode });
     }
 
     if (data.error) return;
@@ -387,7 +392,11 @@ const Flow = () => {
         layer: node.data.layer || 'other',
         theme,
         styleMode: nodeStyle,
-        palette
+        palette,
+        // Critical: Attach handlers here so they persist after refresh
+        onContextMenu: onNodeContextMenu,
+        onEdit: onEdit,
+        onHide: handleHideNode
       }
     }));
 
@@ -418,6 +427,7 @@ const Flow = () => {
         nodeStyle,
         palette,
         dialect,
+        discoveryMode,
         title,
         subtitle,
         path: currentPath,
@@ -650,6 +660,13 @@ const Flow = () => {
             <button onClick={handleChangePath} title="Open Project Folder" style={topButtonStyle}>
               <FolderOpen size={16} /> Open
             </button>
+            <button
+              onClick={() => refreshGraphData()}
+              title="Refresh Graph"
+              style={topButtonStyle}
+            >
+              <RefreshCw size={16} /> Refresh
+            </button>
             <div style={{ width: 1, height: 20, background: borderColor, margin: '0 4px' }}></div>
 
             <button onClick={handleNewConfig} title="New Configuration" style={topButtonStyle}>
@@ -709,6 +726,19 @@ const Flow = () => {
         theme={theme}
       />
 
+      <FileCreationModal
+        isOpen={fileCreationModalOpen}
+        nodeData={ghostNodeData}
+        basePath={currentPath}
+        onClose={() => setFileCreationModalOpen(false)}
+        onFileCreated={(path) => {
+          // File created, refresh graph to see new node as real node
+          refreshGraphData();
+          alert(`File created: ${path}`);
+        }}
+        theme={theme}
+      />
+
 
 
 
@@ -754,56 +784,145 @@ const Flow = () => {
             {/* Settings Popover */}
             {viewSettingsOpen && (
               <div style={{
-                position: 'absolute', bottom: '120%', left: '50%', transform: 'translateX(-50%)',
-                background: panelBg, backdropFilter: 'blur(10px)',
-                padding: '12px', borderRadius: '12px', border: `1px solid ${borderColor}`,
-                display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '150px',
-                boxShadow: '0 5px 20px rgba(0,0,0,0.2)'
+                position: 'absolute', bottom: '130%', left: '50%', transform: 'translateX(-50%)',
+                background: panelBg, backdropFilter: 'blur(16px)',
+                padding: '16px', borderRadius: '16px', border: `1px solid ${borderColor}`,
+                display: 'flex', flexDirection: 'column', gap: '12px', minWidth: '220px',
+                boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+                zIndex: 1000
               }}>
-                <div style={{ fontSize: '11px', fontWeight: 'bold', color: textColor, opacity: 0.7 }}>NODE STYLE</div>
-                <button
-                  onClick={() => setNodeStyle(s => s === 'full' ? 'border' : 'full')}
-                  style={{ ...topButtonStyle, justifyContent: 'flex-start', width: '100%' }}
-                >
-                  {nodeStyle === 'full' ? '🎨 Full' : '⭕ Minimal'}
-                </button>
+                <div style={{ fontSize: '10px', fontWeight: '800', letterSpacing: '1px', color: textColor, opacity: 0.5, marginBottom: '4px' }}>
+                  VIEW SETTINGS
+                </div>
 
-                <div style={{ fontSize: '11px', fontWeight: 'bold', color: textColor, opacity: 0.7, marginTop: '4px' }}>PALETTE</div>
+                {/* Node Style */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '600', color: textColor, opacity: 0.8 }}>Node Style</div>
+                  <div style={{ display: 'flex', background: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderRadius: '8px', padding: '2px' }}>
+                    {['full', 'border'].map(style => (
+                      <button
+                        key={style}
+                        onClick={() => setNodeStyle(style)}
+                        style={{
+                          flex: 1,
+                          padding: '6px',
+                          borderRadius: '6px',
+                          border: 'none',
+                          background: nodeStyle === style ? (theme === 'dark' ? '#333' : '#fff') : 'transparent',
+                          color: textColor,
+                          opacity: nodeStyle === style ? 1 : 0.6,
+                          fontSize: '11px',
+                          fontWeight: '500',
+                          cursor: 'pointer',
+                          boxShadow: nodeStyle === style ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        {style === 'full' ? 'Full' : 'Minimal'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Palette */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '600', color: textColor, opacity: 0.8 }}>Colors</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px' }}>
+                    {['standard', 'vivid', 'pastel'].map(p => (
+                      <button
+                        key={p}
+                        onClick={() => setPalette(p)}
+                        style={{
+                          padding: '6px',
+                          borderRadius: '6px',
+                          border: `1px solid ${palette === p ? borderColor : 'transparent'}`,
+                          background: palette === p ? (theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') : 'transparent',
+                          color: textColor,
+                          fontSize: '10px',
+                          cursor: 'pointer',
+                          textAlign: 'center'
+                        }}
+                      >
+                        {p.charAt(0).toUpperCase() + p.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Dialect */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '600', color: textColor, opacity: 0.8 }}>Dialect</div>
+                  <select
+                    value={dialect}
+                    onChange={(e) => {
+                      setDialect(e.target.value);
+                      setTimeout(() => refreshGraphData(), 0);
+                    }}
+                    style={{
+                      width: '100%',
+                      background: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+                      border: 'none',
+                      borderRadius: '8px',
+                      color: textColor,
+                      padding: '8px',
+                      fontSize: '12px',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {['bigquery', 'snowflake', 'postgres', 'databricks', 'spark', 'redshift', 'duckdb'].map(d => (
+                      <option key={d} value={d} style={{ background: theme === 'dark' ? '#222' : '#fff' }}>
+                        {d.charAt(0).toUpperCase() + d.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ width: '100%', height: '1px', background: borderColor, margin: '4px 0', opacity: 0.5 }}></div>
+
+                {/* Discovery Mode */}
                 <button
                   onClick={() => {
-                    const next = palette === 'standard' ? 'vivid' : (palette === 'vivid' ? 'pastel' : 'standard');
-                    setPalette(next);
-                  }}
-                  style={{ ...topButtonStyle, justifyContent: 'flex-start', width: '100%' }}
-                >
-                  🖌️ {palette.charAt(0).toUpperCase() + palette.slice(1)}
-                </button>
-
-                <div style={{ fontSize: '11px', fontWeight: 'bold', color: textColor, opacity: 0.7, marginTop: '4px' }}>DIALECT</div>
-                <select
-                  value={dialect}
-                  onChange={(e) => {
-                    setDialect(e.target.value);
-                    // Trigger refresh with new dialect
-                    setTimeout(() => refreshGraphData(), 0);
+                    const newMode = !discoveryMode;
+                    setDiscoveryMode(newMode);
+                    refreshGraphData(null, newMode);
                   }}
                   style={{
-                    ...topButtonStyle,
-                    width: '100%',
-                    background: theme === 'dark' ? '#222' : '#fff',
-                    border: `1px solid ${borderColor}`,
-                    outline: 'none',
-                    appearance: 'none',
-                    padding: '6px'
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    background: discoveryMode ? (theme === 'dark' ? 'rgba(50, 200, 100, 0.1)' : 'rgba(50, 200, 100, 0.1)') : 'transparent',
+                    border: discoveryMode ? '1px solid rgba(50, 200, 100, 0.3)' : `1px solid ${borderColor}`,
+                    padding: '10px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    width: '100%'
                   }}
                 >
-                  <option value="bigquery">BigQuery</option>
-                  <option value="snowflake">Snowflake</option>
-                  <option value="postgres">PostgreSQL</option>
-                  <option value="spark">SparkSQL</option>
-                  <option value="redshift">Redshift</option>
-                  <option value="duckdb">DuckDB</option>
-                </select>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '600', color: textColor }}>Discovery Mode</span>
+                    <span style={{ fontSize: '9px', color: textColor, opacity: 0.6 }}>Show missing files</span>
+                  </div>
+
+                  <div style={{
+                    width: '32px', height: '18px',
+                    background: discoveryMode ? '#2ecc71' : (theme === 'dark' ? '#444' : '#ccc'),
+                    borderRadius: '10px',
+                    position: 'relative',
+                    transition: 'background 0.2s'
+                  }}>
+                    <div style={{
+                      position: 'absolute',
+                      top: '2px', left: discoveryMode ? '16px' : '2px',
+                      width: '14px', height: '14px',
+                      background: '#fff',
+                      borderRadius: '50%',
+                      transition: 'left 0.2s',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+                    }}></div>
+                  </div>
+                </button>
               </div>
             )}
           </div>
@@ -823,7 +942,8 @@ const Flow = () => {
             {[
               { key: 'bronze', color: '#A65D29', label: 'B' },
               { key: 'silver', color: '#BCC6D9', label: 'S' },
-              { key: 'gold', color: '#FFD700', label: 'G' }
+              { key: 'gold', color: '#FFD700', label: 'G' },
+              { key: 'external', color: '#ff9f1c', label: 'E' }
             ].map(layer => (
               <button
                 key={layer.key}
@@ -883,122 +1003,168 @@ const Flow = () => {
             <BoxSelect size={20} />
           </button>
         </div>
-      )}
+      )
+      }
 
       {/* Side Panel for Node Details */}
-      {detailsNode && !isExporting && (
-        <div style={{
-          position: 'absolute', top: '60px', right: 0, width: '400px', height: 'calc(100% - 60px)',
-          background: theme === 'dark' ? '#1a1a1a' : '#fff', borderLeft: `1px solid ${borderColor}`,
-          zIndex: 1000, padding: '20px', boxSizing: 'border-box', overflowY: 'auto',
-          boxShadow: '-5px 0 30px rgba(0,0,0,0.3)'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <h2 style={{ margin: 0, color: textColor, fontSize: '18px' }}>
-              {detailsNode.type === 'annotation' ? (detailsNode.isGroup ? 'Group Settings' : 'Note Settings') : 'Node Details'}
-            </h2>
-            <button onClick={() => setDetailsNode(null)} style={{ background: 'transparent', border: 'none', color: textColor, fontSize: '24px', cursor: 'pointer' }}>×</button>
-          </div>
-
-          {detailsNode.type === 'annotation' ? (
-            <div>
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', fontSize: '12px', opacity: 0.6, color: textColor, marginBottom: '8px' }}>Content</label>
-                <textarea
-                  value={detailsNode.label}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    // Update main nodes state
-                    setNodes(nds => nds.map(n => n.id === detailsNode.id ? {
-                      ...n,
-                      data: { ...n.data, label: val }
-                    } : n));
-                    // Update local details view
-                    setDetailsNode(curr => ({ ...curr, label: val })); // Ensure nested data is also updated if needed
-                  }}
-                  style={{ width: '100%', height: '100px', background: theme === 'dark' ? '#333' : '#eee', border: 'none', color: textColor, padding: '10px', borderRadius: '8px', resize: 'vertical' }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', fontSize: '12px', opacity: 0.6, color: textColor, marginBottom: '8px' }}>Font Size (px)</label>
-                <input
-                  type="number"
-                  min="10"
-                  max="100"
-                  value={detailsNode.fontSize || 14}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    setNodes(nds => nds.map(n => n.id === detailsNode.id ? { ...n, data: { ...n.data, fontSize: val } } : n));
-                    setDetailsNode(curr => ({ ...curr, fontSize: val }));
-                  }}
-                  style={{ width: '100%', background: theme === 'dark' ? '#333' : '#eee', border: 'none', color: textColor, padding: '10px', borderRadius: '8px' }}
-                />
-              </div>
-              {!detailsNode.isGroup && (
-                <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <input
-                    type="checkbox"
-                    checked={detailsNode.transparent}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setNodes(nds => nds.map(n => n.id === detailsNode.id ? { ...n, data: { ...n.data, transparent: checked } } : n));
-                      setDetailsNode(curr => ({ ...curr, transparent: checked }));
-                    }}
-                  />
-                  <label style={{ color: textColor, fontSize: '14px' }}>Transparent Background</label>
-                </div>
-              )}
-              <button
-                onClick={() => {
-                  setNodes(nds => nds.filter(n => n.id !== detailsNode.id));
-                  setDetailsNode(null);
-                  setSelectedNode(null); // Clear selection too if deleted
-                }}
-                style={{ padding: '10px 20px', background: '#ff4444', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', width: '100%' }}
-              >
-                🗑️ Delete {detailsNode.isGroup ? 'Group' : 'Note'}
-              </button>
+      {
+        detailsNode && !isExporting && (
+          <div style={{
+            position: 'absolute', top: '60px', right: 0, width: '400px', height: 'calc(100% - 60px)',
+            background: theme === 'dark' ? '#1a1a1a' : '#fff', borderLeft: `1px solid ${borderColor}`,
+            zIndex: 1000, padding: '20px', boxSizing: 'border-box', overflowY: 'auto',
+            boxShadow: '-5px 0 30px rgba(0,0,0,0.3)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0, color: textColor, fontSize: '18px' }}>
+                {detailsNode.type === 'annotation' ? (detailsNode.isGroup ? 'Group Settings' : 'Note Settings') : 'Node Details'}
+              </h2>
+              <button onClick={() => setDetailsNode(null)} style={{ background: 'transparent', border: 'none', color: textColor, fontSize: '24px', cursor: 'pointer' }}>×</button>
             </div>
-          ) : (
-            <>
-              <div style={{ marginBottom: '20px' }}>
-                <div style={{ fontSize: '12px', opacity: 0.6, color: textColor }}>Node Name</div>
-                <div style={{ fontSize: '16px', fontWeight: 600, color: textColor }}>{detailsNode.label}</div>
-              </div>
 
-              <div style={{ marginBottom: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <div style={{ fontSize: '12px', opacity: 0.6, color: textColor }}>Layer</div>
-                  <div style={{ fontSize: '14px', color: textColor, textTransform: 'capitalize' }}>{detailsNode.layer}</div>
+            {detailsNode.type === 'annotation' ? (
+              <div>
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', opacity: 0.6, color: textColor, marginBottom: '8px' }}>Content</label>
+                  <textarea
+                    value={detailsNode.label}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      // Update main nodes state
+                      setNodes(nds => nds.map(n => n.id === detailsNode.id ? {
+                        ...n,
+                        data: { ...n.data, label: val }
+                      } : n));
+                      // Update local details view
+                      setDetailsNode(curr => ({ ...curr, label: val })); // Ensure nested data is also updated if needed
+                    }}
+                    style={{ width: '100%', height: '100px', background: theme === 'dark' ? '#333' : '#eee', border: 'none', color: textColor, padding: '10px', borderRadius: '8px', resize: 'vertical' }}
+                  />
                 </div>
-                <div>
-                  <div style={{ fontSize: '12px', opacity: 0.6, color: textColor }}>Type</div>
-                  <div style={{ fontSize: '14px', color: textColor, textTransform: 'capitalize' }}>{detailsNode.details?.type || 'Table'}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '12px', opacity: 0.6, color: textColor }}>Project</div>
-                  <div style={{ fontSize: '14px', color: textColor }}>{detailsNode.details?.project || '-'}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '12px', opacity: 0.6, color: textColor }}>Dataset</div>
-                  <div style={{ fontSize: '14px', color: textColor }}>{detailsNode.details?.dataset || '-'}</div>
-                </div>
-              </div>
 
-              <div style={{ marginBottom: '10px', fontSize: '12px', opacity: 0.6, color: textColor }}>SQL Content</div>
-              <div style={{
-                background: theme === 'dark' ? '#111' : '#f9f9f9',
-                padding: '15px', borderRadius: '8px', overflowX: 'auto',
-                border: `1px solid ${borderColor}`, fontSize: '12px', fontFamily: 'monospace',
-                whiteSpace: 'pre-wrap', color: textColor, lineHeight: 1.5
-              }}>
-                {detailsNode.details?.content || 'No content found.'}
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', opacity: 0.6, color: textColor, marginBottom: '8px' }}>Font Size (px)</label>
+                  <input
+                    type="number"
+                    min="10"
+                    max="100"
+                    value={detailsNode.fontSize || 14}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      setNodes(nds => nds.map(n => n.id === detailsNode.id ? { ...n, data: { ...n.data, fontSize: val } } : n));
+                      setDetailsNode(curr => ({ ...curr, fontSize: val }));
+                    }}
+                    style={{ width: '100%', background: theme === 'dark' ? '#333' : '#eee', border: 'none', color: textColor, padding: '10px', borderRadius: '8px' }}
+                  />
+                </div>
+                {!detailsNode.isGroup && (
+                  <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <input
+                      type="checkbox"
+                      checked={detailsNode.transparent}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setNodes(nds => nds.map(n => n.id === detailsNode.id ? { ...n, data: { ...n.data, transparent: checked } } : n));
+                        setDetailsNode(curr => ({ ...curr, transparent: checked }));
+                      }}
+                    />
+                    <label style={{ color: textColor, fontSize: '14px' }}>Transparent Background</label>
+                  </div>
+                )}
+                <button
+                  onClick={() => {
+                    setNodes(nds => nds.filter(n => n.id !== detailsNode.id));
+                    setDetailsNode(null);
+                    setSelectedNode(null); // Clear selection too if deleted
+                  }}
+                  style={{ padding: '10px 20px', background: '#ff4444', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', width: '100%' }}
+                >
+                  🗑️ Delete {detailsNode.isGroup ? 'Group' : 'Note'}
+                </button>
               </div>
-            </>
-          )}
-        </div>
-      )}
+            ) : (
+              <>
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ fontSize: '12px', opacity: 0.6, color: textColor }}>Node Name</div>
+                  <div style={{ fontSize: '16px', fontWeight: 600, color: textColor }}>{detailsNode.label}</div>
+                </div>
+
+                {detailsNode.layer === 'external' ? (
+                  <div style={{
+                    padding: '16px',
+                    background: 'rgba(255, 159, 28, 0.1)',
+                    border: '1px solid rgba(255, 159, 28, 0.3)',
+                    borderRadius: '8px',
+                    marginBottom: '20px'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                      <Globe size={18} color="#ff9f1c" />
+                      <span style={{ fontWeight: '600', color: theme === 'dark' ? '#ff9f1c' : '#e67e22' }}>Ghost Node</span>
+                    </div>
+                    <p style={{ fontSize: '12px', opacity: 0.8, color: textColor, marginBottom: '16px', lineHeight: 1.4 }}>
+                      This node is referenced in your project but the corresponding SQL file was not found.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setGhostNodeData(detailsNode);
+                        setFileCreationModalOpen(true);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        background: '#ff9f1c',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+                      }}
+                    >
+                      <FilePlus size={16} /> Create SQL File
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ marginBottom: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div>
+                        <div style={{ fontSize: '12px', opacity: 0.6, color: textColor }}>Layer</div>
+                        <div style={{ fontSize: '14px', color: textColor, textTransform: 'capitalize' }}>{detailsNode.layer}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '12px', opacity: 0.6, color: textColor }}>Type</div>
+                        <div style={{ fontSize: '14px', color: textColor, textTransform: 'capitalize' }}>{detailsNode.details?.type || 'Table'}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '12px', opacity: 0.6, color: textColor }}>Project</div>
+                        <div style={{ fontSize: '14px', color: textColor }}>{detailsNode.details?.project || '-'}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '12px', opacity: 0.6, color: textColor }}>Dataset</div>
+                        <div style={{ fontSize: '14px', color: textColor }}>{detailsNode.details?.dataset || '-'}</div>
+                      </div>
+                    </div>
+
+                    <div style={{ marginBottom: '10px', fontSize: '12px', opacity: 0.6, color: textColor }}>SQL Content</div>
+                    <div style={{
+                      background: theme === 'dark' ? '#111' : '#f9f9f9',
+                      padding: '15px', borderRadius: '8px', overflowX: 'auto',
+                      border: `1px solid ${borderColor}`, fontSize: '12px', fontFamily: 'monospace',
+                      whiteSpace: 'pre-wrap', color: textColor, lineHeight: 1.5
+                    }}>
+                      {detailsNode.details?.content || 'No content found.'}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        )
+      }
 
       <SelectionToolbar
         selectedCount={nodes.filter(n => n.selected).length}
@@ -1010,49 +1176,51 @@ const Flow = () => {
       />
 
       {/* Config List Modal */}
-      {configListModalOpen && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-          background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          backdropFilter: 'blur(5px)'
-        }}>
+      {
+        configListModalOpen && (
           <div style={{
-            background: theme === 'dark' ? '#1a1a1a' : '#fff',
-            width: '400px', borderRadius: '12px', padding: '20px',
-            border: `1px solid ${borderColor}`,
-            boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
+            position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+            background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(5px)'
           }}>
-            <h3 style={{ margin: '0 0 20px 0', color: textColor }}>Load Configuration</h3>
-            <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {availableConfigs.length === 0 && <div style={{ opacity: 0.5, color: textColor }}>No config files found.</div>}
-              {availableConfigs.map(file => (
-                <button
-                  key={file}
-                  onClick={() => selectConfig(file)}
-                  style={{
-                    padding: '10px', borderRadius: '6px', border: `1px solid ${borderColor}`,
-                    background: 'transparent', color: textColor, cursor: 'pointer', textAlign: 'left',
-                    fontWeight: file === currentConfigFile ? 'bold' : 'normal',
-                    backgroundColor: file === currentConfigFile ? (theme === 'dark' ? '#333' : '#eee') : 'transparent'
-                  }}
-                >
-                  {file}
-                </button>
-              ))}
+            <div style={{
+              background: theme === 'dark' ? '#1a1a1a' : '#fff',
+              width: '400px', borderRadius: '12px', padding: '20px',
+              border: `1px solid ${borderColor}`,
+              boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
+            }}>
+              <h3 style={{ margin: '0 0 20px 0', color: textColor }}>Load Configuration</h3>
+              <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {availableConfigs.length === 0 && <div style={{ opacity: 0.5, color: textColor }}>No config files found.</div>}
+                {availableConfigs.map(file => (
+                  <button
+                    key={file}
+                    onClick={() => selectConfig(file)}
+                    style={{
+                      padding: '10px', borderRadius: '6px', border: `1px solid ${borderColor}`,
+                      background: 'transparent', color: textColor, cursor: 'pointer', textAlign: 'left',
+                      fontWeight: file === currentConfigFile ? 'bold' : 'normal',
+                      backgroundColor: file === currentConfigFile ? (theme === 'dark' ? '#333' : '#eee') : 'transparent'
+                    }}
+                  >
+                    {file}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setConfigListModalOpen(false)}
+                style={{
+                  marginTop: '20px', width: '100%', padding: '10px',
+                  background: theme === 'dark' ? '#333' : '#eee', color: textColor,
+                  border: 'none', borderRadius: '6px', cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
             </div>
-            <button
-              onClick={() => setConfigListModalOpen(false)}
-              style={{
-                marginTop: '20px', width: '100%', padding: '10px',
-                background: theme === 'dark' ? '#333' : '#eee', color: textColor,
-                border: 'none', borderRadius: '6px', cursor: 'pointer'
-              }}
-            >
-              Cancel
-            </button>
           </div>
-        </div>
-      )}
+        )
+      }
 
       <ReactFlow
         nodes={nodes}
@@ -1104,7 +1272,7 @@ const Flow = () => {
       }}>
         {isExporting ? 'Created by SQL DAG Flow' : 'Developed by @DSandovalflavio'}
       </div>
-    </div>
+    </div >
   );
 };
 

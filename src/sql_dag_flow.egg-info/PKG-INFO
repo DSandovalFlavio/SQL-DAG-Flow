@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: sql-dag-flow
-Version: 0.1.1
+Version: 0.1.2
 Summary: A sophisticated SQL lineage visualization tool for Medallion Architectures.
 Author-email: Flavio Sandoval <dsandovalflavio@gmail.com>
 License: MIT
@@ -22,8 +22,6 @@ Requires-Dist: sqlglot
 Requires-Dist: networkx
 Requires-Dist: pydantic
 Dynamic: license-file
-
-# SQL DAG Flow
 
 # SQL DAG Flow
 
