@@ -58,6 +58,11 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
     *   **Dark/Light Modes**: Themed for your preference.
     *   **Export**: Save as high-resolution **PNG** or vector **SVG**.
 
+*   **Discovery Mode (New 🔍)**:
+    *   **Visualize Missing Files**: Detects dependencies referenced in your SQL that don't satisfy the parser (e.g. valid external tables or missing files).
+    *   **Ghost Nodes**: These appear as "External" (Orange) nodes.
+    *   **Quick Creation**: Right-click any ghost node to instantly create the corresponding SQL file with a pre-filled template.
+
 ## 🌍 Supported Dialects
 
 Powered by `sqlglot`, supporting:
@@ -76,6 +81,12 @@ Install easily via `pip`:
 
 ```bash
 pip install sql-dag-flow
+```
+
+To update to the latest version:
+
+```bash
+pip install --upgrade sql-dag-flow
 ```
 
 ## ▶️ Usage

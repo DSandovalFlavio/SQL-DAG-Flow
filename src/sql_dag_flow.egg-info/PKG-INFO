@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: sql-dag-flow
-Version: 0.1.2
+Version: 0.1.4
 Summary: A sophisticated SQL lineage visualization tool for Medallion Architectures.
 Author-email: Flavio Sandoval <dsandovalflavio@gmail.com>
 License: MIT
@@ -82,6 +82,11 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
 *   **Premium UI/UX**:
     *   **Dark/Light Modes**: Themed for your preference.
     *   **Export**: Save as high-resolution **PNG** or vector **SVG**.
+
+*   **Discovery Mode (New 🔍)**:
+    *   **Visualize Missing Files**: Detects dependencies referenced in your SQL that don't satisfy the parser (e.g. valid external tables or missing files).
+    *   **Ghost Nodes**: These appear as "External" (Orange) nodes.
+    *   **Quick Creation**: Right-click any ghost node to instantly create the corresponding SQL file with a pre-filled template.
 
 ## 🌍 Supported Dialects
 
