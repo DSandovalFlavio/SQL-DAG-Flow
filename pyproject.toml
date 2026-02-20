@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sql-dag-flow"
-version = "0.1.6"
+version = "0.1.8"
 description = "A sophisticated SQL lineage visualization tool for Medallion Architectures."
 readme = "README.md"
 requires-python = ">=3.8"
@@ -39,4 +39,4 @@ where = ["src"]
 include = ["sql_dag_flow*"]
 
 [tool.setuptools.package-data]
-sql_dag_flow = ["static/*", "static/assets/*"]
+sql_dag_flow = ["static/**/*"]

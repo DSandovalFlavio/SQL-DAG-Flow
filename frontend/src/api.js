@@ -3,7 +3,7 @@ export const API_URL = 'http://localhost:8000';
 // config can be an object { dialect: '...', discovery: true/false }
 export const fetchGraph = async (config = {}) => {
     try {
-        const queryParams = new URLSearchParams(config).toString();
+        const queryParams = new URLSearchParams({ ...config, t: Date.now() }).toString();
         const response = await fetch(`${API_URL}/graph?${queryParams}`);
         if (!response.ok) throw new Error("Failed to fetch graph");
         return await response.json();
@@ -94,7 +94,12 @@ export const fetchFilteredGraph = async (subfolders, dialect = 'bigquery', disco
     try {
         const response = await fetch(`${API_URL}/graph/filtered`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            },
             body: JSON.stringify({ subfolders, dialect, discovery }),
         });
         return await response.json();

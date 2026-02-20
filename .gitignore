@@ -21,3 +21,5 @@ build/
 sql_diagram.json
 
 DEVELOPMENT.md
+
+venv

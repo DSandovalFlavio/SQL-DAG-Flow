@@ -8,6 +8,7 @@ import './index.css';
 import CustomNode from './CustomNode';
 import AnnotationNode from './AnnotationNode';
 import Sidebar from './Sidebar';
+import DetailsPanel from './DetailsPanel';
 import FolderSelectorModal from './FolderSelectorModal';
 import FileCreationModal from './FileCreationModal';
 // 1. Update Imports
@@ -82,6 +83,7 @@ const Flow = () => {
   const [hiddenNodeIds, setHiddenNodeIds] = useState([]); // List of manually hidden node IDs
   const [folderModalOpen, setFolderModalOpen] = useState(false);
   const [subfolderOptions, setSubfolderOptions] = useState([]);
+  const [selectedSubfolders, setSelectedSubfolders] = useState(null);
   const [pendingPath, setPendingPath] = useState(null);
 
   const [fileCreationModalOpen, setFileCreationModalOpen] = useState(false);
@@ -375,18 +377,28 @@ const Flow = () => {
     // Mode override allows immediate refresh with new state before re-render
     const currentMode = modeOverride !== null ? modeOverride : discoveryMode;
 
+    // Use provided subfolders, or fall back to state, or null (all)
+    const foldersToUse = subfolders !== null ? subfolders : selectedSubfolders;
+
     let data;
-    if (subfolders) {
-      data = await fetchFilteredGraph(subfolders, dialect, currentMode);
+    if (foldersToUse) {
+      data = await fetchFilteredGraph(foldersToUse, dialect, currentMode);
     } else {
       data = await fetchGraph({ dialect, discovery: currentMode });
     }
 
     if (data.error) return;
 
+    // Capture current positions to preserve layout
+    const currentPositions = {};
+    nodes.forEach(n => {
+      currentPositions[n.id] = n.position;
+    });
+
     const styledNodes = data.nodes.map(node => ({
       ...node,
       type: 'custom',
+      position: currentPositions[node.id] || { x: 0, y: 0 }, // Preserve or default
       data: {
         ...node.data,
         layer: node.data.layer || 'other',
@@ -400,13 +412,50 @@ const Flow = () => {
       }
     }));
 
-    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
-      styledNodes,
-      data.edges
-    );
+    // If we have existing nodes and just refreshing data, we might want to avoid full auto-layout
+    // But if new nodes appear, we need layout.
+    // Strategy: 
+    // 1. If it's a "soft refresh" (same nodes), keep positions.
+    // 2. If new nodes, run layout ONLY if positions are 0,0 (default).
+    // However, getLayoutedElements forces layout on everything usually.
+    // Let's rely on standard layout BUT if we want to preserve manual moves, we shouldn't call getLayoutedElements 
+    // unless it's an initial load or explicit layout request.
 
-    setNodes(layoutedNodes);
-    setEdges(layoutedEdges);
+    // For now, to solve "resetting view", we will ONLY run auto-layout if it's a fresh load (no existing nodes)
+    // OR if the user explicitly asks for it (which calls onLayout separately).
+    // BUT looking at the code, typical flow is fetch -> setNodes. 
+
+    // Improved Logic:
+    // If we have current nodes, use their positions. For new nodes, use valid default (or run partial layout? hard).
+    // Simple approach for "Refresh": Don't run getLayoutedElements if enough nodes already have positions.
+
+    // Actually, the user complaint is "ignora todo y vuelve al inicio". 
+    // So avoiding getLayoutedElements on refresh is key if we want to keep manual moves.
+
+    let finalNodes = styledNodes;
+    let finalEdges = data.edges;
+
+    // Only run auto-layout if we really strictly need it (empty start)
+    // or if we decide new nodes need it. 
+    // IF we are refreshing, we likely want to keep existing layout.
+    if (nodes.length === 0) {
+      const layouted = getLayoutedElements(styledNodes, data.edges);
+      finalNodes = layouted.nodes;
+      finalEdges = layouted.edges;
+    } else {
+      // We preserve positions from `currentPositions` applied above.
+      // But what about NEW nodes? They are at 0,0.
+      // We can run a layout calculation but only apply it to nodes that are (0,0) and seemingly new?
+      // Dagre layout is global.
+
+      // Compromise: If user hits refresh, we assume they want data updates, not layout resets.
+      // We simply set the nodes. New nodes will stack at 0,0. 
+      // User can hit "Auto Layout" button if they want to re-organize.
+      // This is standard UX for graph tools.
+    }
+
+    setNodes(finalNodes);
+    setEdges(finalEdges);
   };
 
   // Save Handler (Save As)
@@ -555,6 +604,9 @@ const Flow = () => {
     const res = await setPath(path);
     if (res.path) {
       setCurrentPath(res.path);
+      // Update state for future refreshes
+      setSelectedSubfolders(subfolders);
+
       setNodes([]);
       setEdges([]);
       setHiddenNodeIds([]);
@@ -1009,160 +1061,28 @@ const Flow = () => {
       {/* Side Panel for Node Details */}
       {
         detailsNode && !isExporting && (
-          <div style={{
-            position: 'absolute', top: '60px', right: 0, width: '400px', height: 'calc(100% - 60px)',
-            background: theme === 'dark' ? '#1a1a1a' : '#fff', borderLeft: `1px solid ${borderColor}`,
-            zIndex: 1000, padding: '20px', boxSizing: 'border-box', overflowY: 'auto',
-            boxShadow: '-5px 0 30px rgba(0,0,0,0.3)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0, color: textColor, fontSize: '18px' }}>
-                {detailsNode.type === 'annotation' ? (detailsNode.isGroup ? 'Group Settings' : 'Note Settings') : 'Node Details'}
-              </h2>
-              <button onClick={() => setDetailsNode(null)} style={{ background: 'transparent', border: 'none', color: textColor, fontSize: '24px', cursor: 'pointer' }}>×</button>
-            </div>
-
-            {detailsNode.type === 'annotation' ? (
-              <div>
-                <div style={{ marginBottom: '20px' }}>
-                  <label style={{ display: 'block', fontSize: '12px', opacity: 0.6, color: textColor, marginBottom: '8px' }}>Content</label>
-                  <textarea
-                    value={detailsNode.label}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      // Update main nodes state
-                      setNodes(nds => nds.map(n => n.id === detailsNode.id ? {
-                        ...n,
-                        data: { ...n.data, label: val }
-                      } : n));
-                      // Update local details view
-                      setDetailsNode(curr => ({ ...curr, label: val })); // Ensure nested data is also updated if needed
-                    }}
-                    style={{ width: '100%', height: '100px', background: theme === 'dark' ? '#333' : '#eee', border: 'none', color: textColor, padding: '10px', borderRadius: '8px', resize: 'vertical' }}
-                  />
-                </div>
-
-                <div style={{ marginBottom: '20px' }}>
-                  <label style={{ display: 'block', fontSize: '12px', opacity: 0.6, color: textColor, marginBottom: '8px' }}>Font Size (px)</label>
-                  <input
-                    type="number"
-                    min="10"
-                    max="100"
-                    value={detailsNode.fontSize || 14}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      setNodes(nds => nds.map(n => n.id === detailsNode.id ? { ...n, data: { ...n.data, fontSize: val } } : n));
-                      setDetailsNode(curr => ({ ...curr, fontSize: val }));
-                    }}
-                    style={{ width: '100%', background: theme === 'dark' ? '#333' : '#eee', border: 'none', color: textColor, padding: '10px', borderRadius: '8px' }}
-                  />
-                </div>
-                {!detailsNode.isGroup && (
-                  <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <input
-                      type="checkbox"
-                      checked={detailsNode.transparent}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setNodes(nds => nds.map(n => n.id === detailsNode.id ? { ...n, data: { ...n.data, transparent: checked } } : n));
-                        setDetailsNode(curr => ({ ...curr, transparent: checked }));
-                      }}
-                    />
-                    <label style={{ color: textColor, fontSize: '14px' }}>Transparent Background</label>
-                  </div>
-                )}
-                <button
-                  onClick={() => {
-                    setNodes(nds => nds.filter(n => n.id !== detailsNode.id));
-                    setDetailsNode(null);
-                    setSelectedNode(null); // Clear selection too if deleted
-                  }}
-                  style={{ padding: '10px 20px', background: '#ff4444', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', width: '100%' }}
-                >
-                  🗑️ Delete {detailsNode.isGroup ? 'Group' : 'Note'}
-                </button>
-              </div>
-            ) : (
-              <>
-                <div style={{ marginBottom: '20px' }}>
-                  <div style={{ fontSize: '12px', opacity: 0.6, color: textColor }}>Node Name</div>
-                  <div style={{ fontSize: '16px', fontWeight: 600, color: textColor }}>{detailsNode.label}</div>
-                </div>
-
-                {detailsNode.layer === 'external' ? (
-                  <div style={{
-                    padding: '16px',
-                    background: 'rgba(255, 159, 28, 0.1)',
-                    border: '1px solid rgba(255, 159, 28, 0.3)',
-                    borderRadius: '8px',
-                    marginBottom: '20px'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                      <Globe size={18} color="#ff9f1c" />
-                      <span style={{ fontWeight: '600', color: theme === 'dark' ? '#ff9f1c' : '#e67e22' }}>Ghost Node</span>
-                    </div>
-                    <p style={{ fontSize: '12px', opacity: 0.8, color: textColor, marginBottom: '16px', lineHeight: 1.4 }}>
-                      This node is referenced in your project but the corresponding SQL file was not found.
-                    </p>
-                    <button
-                      onClick={() => {
-                        setGhostNodeData(detailsNode);
-                        setFileCreationModalOpen(true);
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '10px',
-                        background: '#ff9f1c',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '6px',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '8px',
-                        boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
-                      }}
-                    >
-                      <FilePlus size={16} /> Create SQL File
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ marginBottom: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                      <div>
-                        <div style={{ fontSize: '12px', opacity: 0.6, color: textColor }}>Layer</div>
-                        <div style={{ fontSize: '14px', color: textColor, textTransform: 'capitalize' }}>{detailsNode.layer}</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '12px', opacity: 0.6, color: textColor }}>Type</div>
-                        <div style={{ fontSize: '14px', color: textColor, textTransform: 'capitalize' }}>{detailsNode.details?.type || 'Table'}</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '12px', opacity: 0.6, color: textColor }}>Project</div>
-                        <div style={{ fontSize: '14px', color: textColor }}>{detailsNode.details?.project || '-'}</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '12px', opacity: 0.6, color: textColor }}>Dataset</div>
-                        <div style={{ fontSize: '14px', color: textColor }}>{detailsNode.details?.dataset || '-'}</div>
-                      </div>
-                    </div>
-
-                    <div style={{ marginBottom: '10px', fontSize: '12px', opacity: 0.6, color: textColor }}>SQL Content</div>
-                    <div style={{
-                      background: theme === 'dark' ? '#111' : '#f9f9f9',
-                      padding: '15px', borderRadius: '8px', overflowX: 'auto',
-                      border: `1px solid ${borderColor}`, fontSize: '12px', fontFamily: 'monospace',
-                      whiteSpace: 'pre-wrap', color: textColor, lineHeight: 1.5
-                    }}>
-                      {detailsNode.details?.content || 'No content found.'}
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-          </div>
+          <DetailsPanel
+            node={detailsNode}
+            onClose={() => setDetailsNode(null)}
+            theme={theme}
+            onUpdateNode={(id, updates) => {
+              setNodes(nds => nds.map(n => n.id === id ? {
+                ...n,
+                data: { ...n.data, ...updates }
+              } : n));
+              // Also update local copy if needed for immediate feedback
+              setDetailsNode(curr => ({ ...curr, ...updates }));
+            }}
+            onDelete={(id) => {
+              setNodes(nds => nds.filter(n => n.id !== id));
+              setDetailsNode(null);
+              setSelectedNode(null);
+            }}
+            onCreateFile={(node) => {
+              setGhostNodeData(node);
+              setFileCreationModalOpen(true);
+            }}
+          />
         )
       }
 

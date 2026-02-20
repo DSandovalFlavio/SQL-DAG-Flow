@@ -203,7 +203,13 @@ if os.path.exists(STATIC_DIR):
         file_path = os.path.join(STATIC_DIR, full_path)
         if os.path.isfile(file_path):
             return FileResponse(file_path)
-        return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+            
+        # Serve index.html with cache-busting headers to ensure updates are seen immediately
+        response = FileResponse(os.path.join(STATIC_DIR, "index.html"))
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
 
 def start():
     """Entry point for the CLI tool."""
