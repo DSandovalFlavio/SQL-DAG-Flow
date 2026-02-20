@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
-import { Handle, Position } from '@xyflow/react';
-import { Database, Table, FileText, Layers, Eye, Globe } from 'lucide-react';
+import { Handle, Position, NodeToolbar } from '@xyflow/react';
+import { Database, Table, FileText, Layers, Eye, Globe, EyeOff, FolderMinus, ScanEye, MousePointerClick } from 'lucide-react';
 
 const CustomNode = ({ id, data }) => {
     const { label, layer, details, theme = 'dark', styleMode = 'full', onContextMenu } = data;
@@ -146,37 +146,56 @@ const CustomNode = ({ id, data }) => {
                     bottom: '100%', // Position above the node
                     left: '50%',
                     transform: 'translateX(-50%)',
-                    paddingBottom: '10px', // Invisible bridge area to prevent mouseleave
-                    display: 'flex', // Hidden by default, shown on hover via CSS
-                    flexDirection: 'column', // Stack bridge and content vertically (though bridge is padding)
+                    paddingBottom: '12px', // Invisible bridge area
+                    display: 'flex',
+                    flexDirection: 'column',
                     alignItems: 'center',
                     opacity: 0,
                     pointerEvents: 'none',
-                    transition: 'opacity 0.2s',
+                    transition: 'all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)',
                     zIndex: 100,
                 }} className="node-toolbar">
                     <div style={{
-                        background: isDark ? '#333' : '#fff',
-                        padding: '4px 8px',
-                        borderRadius: '4px',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                        background: isDark ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+                        backdropFilter: 'blur(8px)',
+                        padding: '6px',
+                        borderRadius: '8px',
+                        boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.4)' : '0 8px 32px rgba(0,0,0,0.15)',
+                        border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.05)',
                         display: 'flex',
                         gap: '4px',
+                        minWidth: 'max-content'
                     }}>
-                        <button
-                            onClick={(e) => { e.stopPropagation(); data.onHide(data.id, 'single'); }}
-                            title="Hide Node"
-                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isDark ? '#fff' : '#000', fontSize: '10px' }}
-                        >
-                            👁️‍🗨️ Hide
-                        </button>
-                        <button
-                            onClick={(e) => { e.stopPropagation(); data.onHide(data.id, 'tree'); }}
-                            title="Hide Node + Dependencies"
-                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isDark ? '#fff' : '#000', fontSize: '10px' }}
-                        >
-                            🌳 Hide Tree
-                        </button>
+                        {/* Hide Self */}
+                        <ToolbarButton
+                            icon={<EyeOff size={14} />}
+                            label="Hide"
+                            onClick={() => data.onAction('hide', data.id)}
+                            isDark={isDark}
+                        />
+                        {/* Hide Ancestors */}
+                        <ToolbarButton
+                            icon={<FolderMinus size={14} />}
+                            label="Hide Left"
+                            onClick={() => data.onAction('hideTree', data.id)}
+                            isDark={isDark}
+                        />
+                        <div style={{ width: '1px', background: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)', margin: '0 2px' }} />
+
+                        {/* Show Only Tree (Focus) */}
+                        <ToolbarButton
+                            icon={<ScanEye size={14} />}
+                            label="Focus Tree"
+                            onClick={() => data.onAction('onlyTree', data.id)}
+                            isDark={isDark}
+                        />
+                        {/* Select Full Tree */}
+                        <ToolbarButton
+                            icon={<MousePointerClick size={14} />}
+                            label="Select Tree"
+                            onClick={() => data.onAction('selectTree', data.id)}
+                            isDark={isDark}
+                        />
                     </div>
                 </div>
             )}
@@ -195,4 +214,28 @@ const CustomNode = ({ id, data }) => {
     );
 };
 
-export default CustomNode; // Removed memo for immediate update reliability
+const ToolbarButton = ({ icon, label, onClick, isDark }) => (
+    <button
+        onClick={(e) => { e.stopPropagation(); onClick(); }}
+        title={label}
+        style={{
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            color: isDark ? '#eee' : '#333',
+            padding: '6px',
+            borderRadius: '4px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'background 0.2s'
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}
+        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+    >
+        {icon}
+        <span style={{ fontSize: '10px', marginLeft: '4px', fontWeight: 500 }}>{label}</span>
+    </button>
+);
+
+export default memo(CustomNode);

@@ -29,7 +29,7 @@ const AnnotationNode = ({ id, data, selected }) => {
                     // Let's ensure content flows well.
                     justifyContent: 'flex-start',
                     background: data.isGroup ? 'rgba(255, 255, 255, 0.05)' : (data.transparent ? 'transparent' : (data.theme === 'dark' ? '#222' : '#fff')),
-                    border: data.isGroup ? '2px dashed rgba(128,128,128,0.5)' : (data.transparent ? '1px dashed rgba(128,128,128,0.3)' : '1px solid #777'),
+                    border: data.borderless ? 'none' : (data.isGroup ? '2px dashed rgba(128,128,128,0.5)' : (data.transparent ? '1px dashed rgba(128,128,128,0.3)' : '1px solid #777')),
                     borderRadius: '8px',
                     color: data.theme === 'dark' ? '#fff' : '#000',
                     zIndex: data.isGroup ? -1 : 10,

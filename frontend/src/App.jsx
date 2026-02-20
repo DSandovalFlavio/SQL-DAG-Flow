@@ -155,23 +155,81 @@ const Flow = () => {
   };
 
   // Node Hiding Logic
-  const handleHideNode = useCallback((nodeId, mode) => {
-    if (mode === 'single') {
-      setHiddenNodeIds(prev => [...new Set([...prev, nodeId])]);
-    } else if (mode === 'tree') {
-      const ancestors = new Set();
-      const queue = [nodeId];
-      while (queue.length > 0) {
-        const curr = queue.shift();
-        ancestors.add(curr);
-        const incoming = edgesRef.current.filter(e => e.target === curr);
-        incoming.forEach(e => {
-          if (!ancestors.has(e.source)) queue.push(e.source);
-        });
-      }
-      setHiddenNodeIds(prev => [...new Set([...prev, ...ancestors])]);
+
+
+  // Helper to get full lineage (ancestors + descendants)
+  const getLineage = useCallback((nodeId) => {
+    const lineage = new Set([nodeId]);
+    const queue = [nodeId];
+
+    // 1. Upstream (Ancestors)
+    const ancestors = new Set();
+    const upQueue = [nodeId];
+    while (upQueue.length > 0) {
+      const curr = upQueue.shift();
+      ancestors.add(curr);
+      const incoming = edgesRef.current.filter(e => e.target === curr);
+      incoming.forEach(e => {
+        if (!ancestors.has(e.source)) {
+          ancestors.add(e.source);
+          upQueue.push(e.source);
+        }
+      });
     }
-  }, [edgesRef]); // using edgesRef to avoid dependency loop
+
+    // 2. Downstream (Descendants)
+    const descendants = new Set();
+    const downQueue = [nodeId];
+    while (downQueue.length > 0) {
+      const curr = downQueue.shift();
+      descendants.add(curr);
+      const outgoing = edgesRef.current.filter(e => e.source === curr);
+      outgoing.forEach(e => {
+        if (!descendants.has(e.target)) {
+          descendants.add(e.target);
+          downQueue.push(e.target);
+        }
+      });
+    }
+
+    return new Set([...ancestors, ...descendants]);
+  }, []);
+
+  const handleApplyAction = useCallback((action, nodeId) => {
+    switch (action) {
+      case 'hide':
+        setHiddenNodeIds(prev => [...new Set([...prev, nodeId])]);
+        break;
+      case 'hideTree': // Hides UPSTREAM tree (ancestors) per existing logic
+        const ancestors = new Set();
+        const queue = [nodeId];
+        while (queue.length > 0) {
+          const curr = queue.shift();
+          ancestors.add(curr);
+          const incoming = edgesRef.current.filter(e => e.target === curr);
+          incoming.forEach(e => {
+            if (!ancestors.has(e.source)) queue.push(e.source);
+          });
+        }
+        setHiddenNodeIds(prev => [...new Set([...prev, ...ancestors])]);
+        break;
+      case 'onlyTree': // Show ONLY this node and its full lineage
+        const lineage = getLineage(nodeId);
+        const allNodeIds = nodesRef.current.map(n => n.id);
+        const toHide = allNodeIds.filter(id => !lineage.has(id));
+        setHiddenNodeIds(toHide);
+        break;
+      case 'selectTree': // Select full lineage
+        const fullLineage = getLineage(nodeId);
+        setNodes(nds => nds.map(n => ({
+          ...n,
+          selected: fullLineage.has(n.id)
+        })));
+        break;
+      default:
+        break;
+    }
+  }, [getLineage, setNodes]);
 
   const toggleNodeVisibility = useCallback((nodeId) => {
     setHiddenNodeIds(prev => prev.includes(nodeId) ? prev.filter(id => id !== nodeId) : [...prev, nodeId]);
@@ -201,7 +259,7 @@ const Flow = () => {
           ...n.data,
           onContextMenu: n.type === 'custom' ? onNodeContextMenu : undefined,
           onEdit: n.type === 'annotation' ? onEdit : undefined,
-          onHide: n.type === 'custom' ? handleHideNode : undefined,
+          onAction: n.type === 'custom' ? handleApplyAction : undefined,
           theme, styleMode: nodeStyle, palette, showCounts
         }
       })));
@@ -221,7 +279,7 @@ const Flow = () => {
       }
       setCurrentConfigFile(filename); // Update current config file
     }
-  }, [setNodes, setEdges, rfInstance, visibleLayers, onNodeContextMenu, onEdit, handleHideNode, theme, nodeStyle, palette, showCounts, dialect]);
+  }, [setNodes, setEdges, rfInstance, visibleLayers, onNodeContextMenu, onEdit, handleApplyAction, theme, nodeStyle, palette, showCounts, dialect]);
 
   // ... (Effect hooks) ...
 
@@ -253,7 +311,7 @@ const Flow = () => {
         if (newData.showCounts !== showCounts) { newData.showCounts = showCounts; changed = true; }
         // functions usually stable but good to ensure
         newData.onContextMenu = onNodeContextMenu;
-        newData.onHide = handleHideNode;
+        newData.onAction = handleApplyAction;
         newData.onEdit = onEdit;
 
         if (node.hidden === isHidden && !changed) return node;
@@ -408,7 +466,7 @@ const Flow = () => {
         // Critical: Attach handlers here so they persist after refresh
         onContextMenu: onNodeContextMenu,
         onEdit: onEdit,
-        onHide: handleHideNode
+        onAction: handleApplyAction
       }
     }));
 
@@ -516,10 +574,15 @@ const Flow = () => {
 
   const addAnnotation = (type) => {
     const id = `annotation-${Date.now()}`;
+    // Center the new note in the current view
+    const position = rfInstance
+      ? rfInstance.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
+      : { x: 100, y: 100 };
+
     const newNode = {
       id,
       type: 'annotation',
-      position: { x: 100, y: 100 },
+      position,
       zIndex: type === 'group' ? -1 : 10,
       data: {
         label: type === 'group' ? 'Group Name' : 'Comment...',

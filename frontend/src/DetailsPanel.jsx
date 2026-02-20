@@ -120,13 +120,23 @@ const DetailsPanel = ({
                             />
                         </div>
                         {!node.isGroup && (
-                            <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={node.transparent}
-                                    onChange={(e) => onUpdateNode(node.id, { transparent: e.target.checked })}
-                                />
-                                <label style={{ color: textColor, fontSize: '14px' }}>Transparent Background</label>
+                            <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={node.transparent}
+                                        onChange={(e) => onUpdateNode(node.id, { transparent: e.target.checked })}
+                                    />
+                                    <label style={{ color: textColor, fontSize: '14px' }}>Transparent Background</label>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={node.borderless}
+                                        onChange={(e) => onUpdateNode(node.id, { borderless: e.target.checked })}
+                                    />
+                                    <label style={{ color: textColor, fontSize: '14px' }}>Borderless</label>
+                                </div>
                             </div>
                         )}
                         <button
