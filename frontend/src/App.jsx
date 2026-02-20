@@ -1,7 +1,8 @@
 import React, { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { ReactFlow, Background, Controls, useNodesState, useEdgesState, addEdge, MiniMap, useReactFlow, Panel } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import dagre from 'dagre';
+// import dagre from 'dagre'; // Removed in favor of ELK
+import { getLayoutedElements } from './algorithms/elk';
 import { toPng, toSvg } from 'html-to-image';
 import { fetchGraph, saveGraph, loadGraphState, setPath, getPath, scanFolders, fetchFilteredGraph } from './api';
 import './index.css';
@@ -20,41 +21,7 @@ import {
 } from 'lucide-react';
 import SelectionToolbar from './SelectionToolbar';
 
-// Layout function using Dagre
-const getLayoutedElements = (nodes, edges, direction = 'LR') => {
-  const dagreGraph = new dagre.graphlib.Graph();
-  dagreGraph.setDefaultEdgeLabel(() => ({}));
-
-  const nodeWidth = 250;
-  const nodeHeight = 100;
-
-  dagreGraph.setGraph({ rankdir: direction });
-
-  nodes.forEach((node) => {
-    dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
-  });
-
-  edges.forEach((edge) => {
-    dagreGraph.setEdge(edge.source, edge.target);
-  });
-
-  dagre.layout(dagreGraph);
-
-  const layoutedNodes = nodes.map((node) => {
-    const nodeWithPosition = dagreGraph.node(node.id);
-    return {
-      ...node,
-      targetPosition: 'left',
-      sourcePosition: 'right',
-      position: {
-        x: nodeWithPosition.x - nodeWidth / 2,
-        y: nodeWithPosition.y - nodeHeight / 2,
-      },
-    };
-  });
-
-  return { nodes: layoutedNodes, edges };
-};
+// Dagre layout function removed. Using ELK from ./algorithms/elk
 
 const Flow = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -238,8 +205,8 @@ const Flow = () => {
   // ... (Hide Node Logic - No Change) ...
 
   // Auto Layout Handler
-  const onLayout = useCallback(() => {
-    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
+  const onLayout = useCallback(async () => {
+    const { nodes: layoutedNodes, edges: layoutedEdges } = await getLayoutedElements(
       nodes,
       edges
     );
@@ -497,7 +464,7 @@ const Flow = () => {
     // or if we decide new nodes need it. 
     // IF we are refreshing, we likely want to keep existing layout.
     if (nodes.length === 0) {
-      const layouted = getLayoutedElements(styledNodes, data.edges);
+      const layouted = await getLayoutedElements(styledNodes, data.edges);
       finalNodes = layouted.nodes;
       finalEdges = layouted.edges;
     } else {

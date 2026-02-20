@@ -21,8 +21,6 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
 *   **1. Legacy Code Audit & Refactoring**:
     *   *The Problem*: You join a new project with 200+ undocumented SQL scripts. Nobody knows what breaks what.
     *   *The Solution*: Run `sql-dag-flow` to instantly map the "spaghetti" dependencies. Identify orphan tables, circular dependencies, and the impact of changing a Silver layer table.
-*   **2. Automated Architecture Documentation**:
-    *   *The Problem*: Architecture diagrams in Lucidchart or Visio are always outdated.
     *   *The Solution*: Generate interactive pipeline visualizations (ETL/ELT) to include in your Pull Requests, Wikis, or client deliverables.
 *   **3. Medallion Architecture Validation**:
     *   *The Problem*: It's hard to verify if the logical separation of layers (Bronze → Silver → Gold) is being respected.
@@ -38,6 +36,10 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
 *   **Medallion Architecture Support**: Automatically categorizes and colors nodes based on folder structure (Bronze, Silver, Gold).
 *   **Discovery Mode**: Visualize "Ghost Nodes" (missing files or external tables) and create them with a click.
 *   **CTE Visualization**: Detects internal Common Table Expressions and displays them as distinct Pink nodes.
+*   **Smart Layout (New 🧠)**:
+    *   Powered by **ELK (Eclipse Layout Kernel)**.
+    *   Minimizes edge crossings and optimizes flow direction.
+    *   Intelligent "Port" handling for cleaner connections.
 
 ### 🎮 Interactive Graph
 *   **Smart Context Menu**:
@@ -87,7 +89,7 @@ Install easily via `pip`:
 pip install sql-dag-flow
 ```
 
-To update to the latest version (**v0.2.0**):
+To update to the latest version (**v0.2.1**):
 
 ```bash
 pip install --upgrade sql-dag-flow

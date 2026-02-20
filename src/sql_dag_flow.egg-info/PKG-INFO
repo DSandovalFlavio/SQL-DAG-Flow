@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: sql-dag-flow
-Version: 0.1.9
+Version: 0.2.0
 Summary: A sophisticated SQL lineage visualization tool for Medallion Architectures.
 Author-email: Flavio Sandoval <dsandovalflavio@gmail.com>
 License: MIT
@@ -39,6 +39,8 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
 *   **Security by Design**: By relying on static analysis, your code never leaves your machine and no access to sensitive production data is required.
 *   **Living Documentation**: The diagram is generated *from* the code. If the code changes, the documentation updates, eliminating obsolete manually-drawn diagrams.
 
+---
+
 ## 🎯 Objectives & Use Cases
 
 *   **1. Legacy Code Audit & Refactoring**:
@@ -54,106 +56,38 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
     *   *The Problem*: Explaining data flow to new engineers takes hours of whiteboard drawing.
     *   *The Solution*: Deliver an interactive map where new team members can explore where data comes from, view associated SQL code, and understand business logic without reading thousands of lines of code.
 
-![SQL DAG Flow Screenshot](/images/sql-architecture-logo.png)
-
 ## 🚀 Key Features
 
-*   **Automatic Parsing & Visualization**: Recursively scans your project folders to find `.sql` files and detect dependencies (`FROM`, `JOIN`, `CTE`s) using `sqlglot`.
-*   **Medallion Architecture Support**: Automatically categorizes and colors nodes based on folder structure:
-    *   🟤 **Bronze**: Raw ingestion layers.
-    *   ⚪ **Silver**: Cleaned and conformed data.
-    *   🟡 **Gold**: Business-level aggregates.
-*   **Smart Folder Selection**:
-    *   **Selective Exploration**: Choose specific subfolders to analyze using an interactive tree view.
-    *   **Deep Filtering**: Focus only on relevant parts of your pipeline.
-*   **Advanced Organization**:
-    *   **Selection Toolbar**: Multi-select nodes and align them horizontally/vertically.
-    *   **Node Hiding**: Hide specific nodes or entire trees to declutter the view.
-    *   **Auto Layout**: Automatically arrange nodes using Dagre layout engine.
-*   **Configuration Management**:
-    *   **Save & Load**: Persist your layouts, hidden nodes, and viewport settings to JSON.
-    *   **Workspaces**: manage multiple project configurations.
-*   **Rich Metadata**:
-    *   **Details Panel**: View full SQL content and schema details.
-    *   **Annotations**: Add sticky notes with **Markdown support**, resize them, and create visual groups.
-*   **Visual Cues**:
-    *   **Solid Border**: Indicates a Table.
-    *   **Dashed Border**: Indicates a View (auto-detected).
-*   **Premium UI/UX**:
-    *   **Dark/Light Modes**: Themed for your preference.
-    *   **Export**: Save as high-resolution **PNG** or vector **SVG**.
+### 🔍 Visualization & Analysis
+*   **Automatic Parsing**: Recursively scans `.sql` files to detect dependencies (`FROM`, `JOIN`, `CTE`s) using `sqlglot`.
+*   **Medallion Architecture Support**: Automatically categorizes and colors nodes based on folder structure (Bronze, Silver, Gold).
+*   **Discovery Mode**: Visualize "Ghost Nodes" (missing files or external tables) and create them with a click.
+*   **CTE Visualization**: Detects internal Common Table Expressions and displays them as distinct Pink nodes.
 
-*   **Discovery Mode (New 🔍)**:
-    *   **Visualize Missing Files**: Detects dependencies referenced in your SQL that don't satisfy the parser (e.g. valid external tables or missing files).
-    *   **Ghost Nodes**: These appear as "External" (Orange) nodes.
-    *   **Quick Creation**: Right-click any ghost node to instantly create the corresponding SQL file with a pre-filled template.
-*   **Enhanced Sidebar**:
-    *   **Grouped View**: Nodes organized by type (Standard, External, CTE).
-    *   **Usage Counts**: See incoming dependency counts at a glance.
-    *   **Quick Navigation**: Click any node to center the graph on it.
-*   **CTE Visualization**:
-    *   **Internal Dependencies**: Detects and visualizes Common Table Expressions (CTEs) within your SQL.
-    *   **Code Transparency**: Select a CTE node to view its specific SQL definition formatted in the Details Panel.
+### 🎮 Interactive Graph
+*   **Smart Context Menu**:
+    *   **Focus Tree**: Isolate a node and its lineage (ancestors + descendants) to declutter the view.
+    *   **Select Tree**: One-click selection of an entire dependency chain for easy movement.
+    *   **Hide/Show**: Toggle visibility of individual nodes or full branches.
+*   **Advanced Navigation**:
+    *   **Sidebar**: Grouped list of nodes with usage counts and click-to-center navigation.
+    *   **Details Panel**: View formatted SQL code, schema info, and configure node settings.
 
-## 🌍 Supported Dialects
+### 📝 Notes & Annotations
+*   **Center Placement**: New notes spawn exactly in the center of your view.
+*   **Rich Styling**:
+    *   **Markdown Support**: Write rich text notes.
+    *   **Transparent & Borderless**:Create clean, floating text labels without boxes.
+    *   **Groups**: Create visual containers to group related nodes.
 
-Powered by `sqlglot`, supporting:
-*   **BigQuery** (Default)
-*   **Snowflake**
-*   **PostgreSQL**
-*   **Spark / Databricks**
-*   **Amazon Redshift**
-*   **DuckDB**
-*   **MySQL**
-*   ...and more.
+### ⚙️ Customization
+*   **Premium UI**:
+    *   **Themes**: Toggle between Light and Dark modes.
+    *   **Palettes**: Choose from Standard, Vivid, or Pastel color schemes to match your presentation style.
+    *   **Styles**: Switch between "Full" (colored body) and "Minimal" (colored border) node styles.
+*   **Export**: Save high-resolution **PNG** or vector **SVG** diagrams for documentation.
 
-## 📦 Installation
-
-Install easily via `pip`:
-
-```bash
-pip install sql-dag-flow
-```
-
-To update to the latest version:
-
-```bash
-pip install --upgrade sql-dag-flow
-```
-
-## ▶️ Usage
-
-### 1. Command Line Interface (CLI)
-
-You can run the tool directly from your terminal:
-
-```bash
-# Analyze the current directory
-sql-dag-flow
-
-# Analyze a specific SQL project
-sql-dag-flow /path/to/my/dbt_project
-```
-
-### 2. Python API
-
-Integrate it into your Python scripts or notebooks:
-
-```python
-from sql_dag_flow import start
-
-# Start the server and open the browser
-start(directory="./my_sql_project")
-```
-
-## 📂 Project Structure Expectations
-
-SQL DAG Flow is opinionated but flexible. It looks for standard Medallion Architecture naming conventions to assign colors:
-
-*   **Bronze Layer**: Any folder named `bronze`, `raw`, `landing`, or `staging`.
-*   **Silver Layer**: Any folder named `silver`, `intermediate`, or `conformed`.
-*   **Gold Layer**: Any folder named `gold`, `mart`, `serving`, or `presentation`.
-*   **Other**: Any other folder is categorized as "Other" (Gray).
+---
 
 ## 🎨 Visual Legend & Color Palettes
 
@@ -168,19 +102,61 @@ SQL DAG Flow uses distinct colors to identify node types. You can switch between
 | **CTE** | Internal Common Table Expression | 💖 Pink (`#E91E63`) | 💗 Deep Pink (`#F50057`) | 🌸 Light Pink (`#F8BBD0`) |
 | **Other** | Uncategorized | 🔵 Teal (`#4CA1AF`) | 💠 Cyan (`#00BCD4`) | 🧊 Pale Cyan (`#B2EBF2`) |
 
-## 🛠️ Configuration & Customization
+---
 
-### Settings
-Click the **Settings (Gear)** icon in the bottom toolbar to:
-*   **Change SQL Dialect**: Ensure your specific SQL syntax is parsed correctly.
-*   **Toggle Node Style**: Switch between "Full" (colored body) and "Minimal" (colored border) styles.
-*   **Change Palette**: Switch between Standard, Vivid, and Pastel color palettes.
+## 📦 Installation
 
-### Saving Layouts
-Your graph layout (positions, hidden nodes) is **not** permanent by default. To save your work:
-1.  Click **Save** in the top bar.
-2.  Choose a filename (e.g., `marketing_flow.json`).
-3.  Next time, click **Load** to restore that exact view.
+Install easily via `pip`:
+
+```bash
+pip install sql-dag-flow
+```
+
+To update to the latest version (**v0.2.0**):
+
+```bash
+pip install --upgrade sql-dag-flow
+```
+
+---
+
+## ▶️ Usage
+
+### 1. Command Line Interface (CLI)
+
+Run directly from your terminal:
+
+```bash
+# Analyze the current directory
+sql-dag-flow
+
+# Analyze a specific SQL project
+sql-dag-flow /path/to/my/dbt_project
+```
+
+### 2. Python API
+
+Integrate into your workflows:
+
+```python
+from sql_dag_flow import start
+
+# Start the server and open the browser
+start(directory="./my_sql_project")
+```
+
+---
+
+## 📂 Project Structure Expectations
+
+SQL DAG Flow looks for standard Medallion Architecture naming conventions:
+
+*   **Bronze Layer**: Folders named `bronze`, `raw`, `landing`, or `staging`.
+*   **Silver Layer**: Folders named `silver`, `intermediate`, or `conformed`.
+*   **Gold Layer**: Folders named `gold`, `mart`, `serving`, or `presentation`.
+*   **Other**: Any other folder is categorized as "Other" (Teal).
+
+---
 
 ## 🤝 Contributing
 
