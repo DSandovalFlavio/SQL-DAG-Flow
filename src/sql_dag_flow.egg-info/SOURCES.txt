@@ -16,5 +16,5 @@ src/sql_dag_flow.egg-info/requires.txt
 src/sql_dag_flow.egg-info/top_level.txt
 src/sql_dag_flow/static/index.html
 src/sql_dag_flow/static/vite.svg
-src/sql_dag_flow/static/assets/index-DoR4cKrG.js
+src/sql_dag_flow/static/assets/index-DTYdHiSH.js
 src/sql_dag_flow/static/assets/index-h7gxR8yA.css

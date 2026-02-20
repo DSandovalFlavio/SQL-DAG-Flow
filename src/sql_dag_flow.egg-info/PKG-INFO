@@ -87,6 +87,13 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
     *   **Visualize Missing Files**: Detects dependencies referenced in your SQL that don't satisfy the parser (e.g. valid external tables or missing files).
     *   **Ghost Nodes**: These appear as "External" (Orange) nodes.
     *   **Quick Creation**: Right-click any ghost node to instantly create the corresponding SQL file with a pre-filled template.
+*   **Enhanced Sidebar**:
+    *   **Grouped View**: Nodes organized by type (Standard, External, CTE).
+    *   **Usage Counts**: See incoming dependency counts at a glance.
+    *   **Quick Navigation**: Click any node to center the graph on it.
+*   **CTE Visualization**:
+    *   **Internal Dependencies**: Detects and visualizes Common Table Expressions (CTEs) within your SQL.
+    *   **Code Transparency**: Select a CTE node to view its specific SQL definition formatted in the Details Panel.
 
 ## 🌍 Supported Dialects
 
@@ -147,6 +154,19 @@ SQL DAG Flow is opinionated but flexible. It looks for standard Medallion Archit
 *   **Silver Layer**: Any folder named `silver`, `intermediate`, or `conformed`.
 *   **Gold Layer**: Any folder named `gold`, `mart`, `serving`, or `presentation`.
 *   **Other**: Any other folder is categorized as "Other" (Gray).
+
+## 🎨 Visual Legend & Color Palettes
+
+SQL DAG Flow uses distinct colors to identify node types. You can switch between these palettes in the Settings.
+
+| Node Type | Layer / Meaning | Standard | Vivid | Pastel |
+| :--- | :--- | :--- | :--- | :--- |
+| **Bronze** | Raw Ingestion | 🟤 Brown (`#8B4513`) | 🟠 Orange (`#FF5722`) | 🟤 Pale Brown (`#D7CCC8`) |
+| **Silver** | Cleaned / Conformed | ⚪ Gray (`#708090`) | 🔵 Blue (`#29B6F6`) | ⚪ Blue Grey (`#CFD8DC`) |
+| **Gold** | Business Aggregates | 🟡 Gold (`#DAA520`) | 🟡 Yellow (`#FFEB3B`) | 🟡 Pale Yellow (`#FFF9C4`) |
+| **External** | Missing / Ghost Node | 🟠 Dark Orange (`#D35400`) | 🟠 Neon Orange (`#FF9800`) | 🟠 Peach (`#FFE0B2`) |
+| **CTE** | Internal Common Table Expression | 💖 Pink (`#E91E63`) | 💗 Deep Pink (`#F50057`) | 🌸 Light Pink (`#F8BBD0`) |
+| **Other** | Uncategorized | 🔵 Teal (`#4CA1AF`) | 💠 Cyan (`#00BCD4`) | 🧊 Pale Cyan (`#B2EBF2`) |
 
 ## 🛠️ Configuration & Customization
 
