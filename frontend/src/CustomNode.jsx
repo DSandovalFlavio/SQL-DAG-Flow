@@ -14,7 +14,9 @@ const CustomNode = ({ id, data }) => {
             case 'bronze': return '#cd7f32';
             case 'silver': return '#A0A0A0';
             case 'gold': return '#FFD700';
-            case 'external': return '#ff9f1c'; // distinct orange-ish for external
+            case 'external': return '#ff9f1c';
+            case 'cte': return '#E91E63'; // Pink for CTEs
+            case 'other': return '#4CA1AF'; // Teal for Other
             default: return '#4CA1AF';
         }
     };
@@ -23,9 +25,9 @@ const CustomNode = ({ id, data }) => {
         const palette = data.palette || 'standard';
 
         const colors = {
-            standard: { bronze: '#8B4513', silver: '#708090', gold: '#DAA520', external: '#e67e22', default: '#2F4F4F' },
-            vivid: { bronze: '#D35400', silver: '#3498DB', gold: '#F1C40F', external: '#ff9f1c', default: '#8E44AD' },
-            pastel: { bronze: '#E6B0AA', silver: '#AED6F1', gold: '#F9E79F', external: '#fad7a0', default: '#D7BDE2' }
+            standard: { bronze: '#8B4513', silver: '#708090', gold: '#DAA520', external: '#D35400', cte: '#E91E63', other: '#4CA1AF', default: '#2F4F4F' },
+            vivid: { bronze: '#FF5722', silver: '#29B6F6', gold: '#FFEB3B', external: '#FF9800', cte: '#F50057', other: '#00BCD4', default: '#9C27B0' },
+            pastel: { bronze: '#D7CCC8', silver: '#CFD8DC', gold: '#FFF9C4', external: '#FFE0B2', cte: '#F8BBD0', other: '#B2EBF2', default: '#E1BEE7' }
         };
 
         const selectedPalette = colors[palette] || colors.standard;
@@ -35,6 +37,8 @@ const CustomNode = ({ id, data }) => {
             case 'silver': return selectedPalette.silver;
             case 'gold': return selectedPalette.gold;
             case 'external': return selectedPalette.external;
+            case 'cte': return selectedPalette.cte;
+            case 'other': return selectedPalette.other;
             default: return selectedPalette.default;
         }
     };
@@ -60,6 +64,7 @@ const CustomNode = ({ id, data }) => {
             case 'silver': return <Table size={16} color={iconColor} />;
             case 'gold': return <Layers size={16} color={iconColor} />;
             case 'external': return <Globe size={16} color={iconColor} />;
+            case 'cte': return <FileText size={16} color={iconColor} style={{ fontStyle: 'italic' }} />;
             default: return <FileText size={16} color={iconColor} />;
         }
     }

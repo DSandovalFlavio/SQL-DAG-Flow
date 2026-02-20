@@ -95,7 +95,7 @@ const Flow = () => {
   const [availableConfigs, setAvailableConfigs] = useState([]);
   const [viewSettingsOpen, setViewSettingsOpen] = useState(false);
 
-  const [visibleLayers, setVisibleLayers] = useState({ bronze: true, silver: true, gold: true, external: true, other: true });
+  const [visibleLayers, setVisibleLayers] = useState({ bronze: true, silver: true, gold: true, external: true, cte: true, other: true });
   const [showCounts, setShowCounts] = useState(true);
 
   const nodeTypes = useMemo(() => ({ custom: CustomNode, annotation: AnnotationNode }), []);
@@ -764,6 +764,25 @@ const Flow = () => {
             toggleNodeVisibility={toggleNodeVisibility}
             onClose={() => setSidebarOpen(false)}
             theme={theme}
+            onNodeClick={(node) => {
+              if (rfInstance) {
+                // Determine target zoom based on current or default
+                // We want to zoom in a bit if it's too far out, or keep current if close enough
+                const currentZoom = rfInstance.getViewport().zoom;
+                const targetZoom = currentZoom < 1 ? 1 : currentZoom;
+
+                rfInstance.setCenter(node.position.x, node.position.y, { zoom: targetZoom, duration: 800 });
+
+                // Also select the node
+                setSelectedNode(node);
+                // setDetailsNode(node); // Optional: open details panel too? User just said "move interface to find it easier"
+                // Let's just select and highlight it
+                setNodes(nds => nds.map(n => ({
+                  ...n,
+                  selected: n.id === node.id
+                })));
+              }
+            }}
           />
         </div>
       )}
@@ -995,7 +1014,8 @@ const Flow = () => {
               { key: 'bronze', color: '#A65D29', label: 'B' },
               { key: 'silver', color: '#BCC6D9', label: 'S' },
               { key: 'gold', color: '#FFD700', label: 'G' },
-              { key: 'external', color: '#ff9f1c', label: 'E' }
+              { key: 'external', color: '#ff9f1c', label: 'E' },
+              { key: 'cte', color: '#E91E63', label: 'CTE' }
             ].map(layer => (
               <button
                 key={layer.key}

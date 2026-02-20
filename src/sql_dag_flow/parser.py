@@ -157,10 +157,14 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                     dependencies = set()
                     
                     # 1. Identify CTEs defined in the query to exclude them from dependencies
-                    defined_ctes = set()
+                    defined_ctes = {}
                     for cte in parsed.find_all(exp.CTE):
                         if cte.alias_or_name:
-                            defined_ctes.add(cte.alias_or_name)
+                            # Extract the full CTE definition as SQL string
+                            # We can use cte.sql() or just the inner query
+                            # User likely wants the full "name AS ( ... )" or just the inner query
+                            # Let's give the full CTE expression for context
+                            defined_ctes[cte.alias_or_name] = cte.sql(dialect=dialect, pretty=True)
                     
                     # Find all tables referenced in the query
                     for table in parsed.find_all(exp.Table):
@@ -176,10 +180,12 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                         if dep_name == target_table_name:
                             continue
                             
-                        # Avoid Internal CTE references
+                        # Internal CTE references
                         if dep_name in defined_ctes:
+                            # Add strictly as a CTE dependency so we can visualize it if desired
+                            dependencies.add(f"cte:{filename_base}:{dep_name}")
                             continue
-                            
+
                         # If we haven't found a CREATE statement, this might just be a SELECT
                         # and we treat the filename as the target.
                         
@@ -198,7 +204,8 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                         "dataset": dataset,
                         "path": filepath,
                         "dependencies": list(dependencies),
-                        "content": sql_content 
+                        "content": sql_content,
+                        "ctes": defined_ctes
                     }
                 except Exception as e:
                     print(f"Error parsing {filepath}: {e}")
@@ -271,48 +278,92 @@ def build_graph(tables, discovery_mode=False):
                 })
                 incoming_edges_count[source_id] = incoming_edges_count.get(source_id, 0) + 1
             else:
-                 # Discovery Mode: Handle missing dependencies
-                 if discovery_mode and not target_id:
-                     # Create a unique ID for the missing node
-                     # Use the full dependency name as the ID
-                     ghost_id = dep
+                 # Discovery Mode: Handle missing dependencies OR CTEs
+                 if discovery_mode:
                      
-                     if ghost_id not in missing_nodes:
-                         # Attempt to parse project/dataset from the dependency string
-                         parts = ghost_id.split('.')
-                         ghost_project = "default"
-                         ghost_dataset = "default"
-                         ghost_table = ghost_id
+                     # 1. Handle CTEs
+                     if dep.startswith("cte:"):
+                         # Format: cte:filename_base:cte_name
+                         parts = dep.split(":")
+                         if len(parts) >= 3:
+                             # Reconstruct in case name had colons (unlikely but safe)
+                             cte_name = ":".join(parts[2:])
+                             
+                             # CTE ID is the dependency string itself to be unique per file
+                             cte_id = dep
+                             
+                             if cte_id not in missing_nodes:
+                                 # Retrieve SQL content if available
+                                 cte_content = f"-- CTE: {cte_name}"
+                                 if source_id in tables and "ctes" in tables[source_id]:
+                                     if cte_name in tables[source_id]["ctes"]:
+                                         cte_content = tables[source_id]["ctes"][cte_name]
+
+                                 missing_nodes[cte_id] = {
+                                     "id": cte_id,
+                                     "label": cte_name,
+                                     "layer": "cte",  # Special layer for CTEs
+                                     "type": "cte",   # Special type for CTEs
+                                     "project": "internal",
+                                     "dataset": "cte",
+                                     "path": "internal",
+                                     "dependencies": [],
+                                     "content": cte_content
+                                 }
+                                 
+                             # Edge from CTE to Table
+                             edges.append({
+                                "id": f"{cte_id}-{source_id}",
+                                "source": cte_id,
+                                "target": source_id,
+                                "animated": True,
+                                "style": {"stroke": "#E91E63", "strokeDasharray": "2,2"} # Pink dashed for CTEs
+                             })
+                             # CTEs generally don't have incoming edges in this parser implementation yet
+                             # but we count for the target
+                             incoming_edges_count[source_id] = incoming_edges_count.get(source_id, 0) + 1
+                         continue
+
+                     # 2. Handle missing external nodes
+                     if not target_id:
+                         # Create a unique ID for the missing node
+                         # Use the full dependency name as the ID
+                         ghost_id = dep
                          
-                         if len(parts) == 3:
-                             ghost_project, ghost_dataset, ghost_table = parts
-                         elif len(parts) == 2:
-                             ghost_dataset, ghost_table = parts
+                         if ghost_id not in missing_nodes:
+                             # Attempt to parse project/dataset from the dependency string
+                             parts = ghost_id.split('.')
+                             ghost_project = "default"
+                             ghost_dataset = "default"
+                             ghost_table = ghost_id
+                             
+                             if len(parts) == 3:
+                                 ghost_project, ghost_dataset, ghost_table = parts
+                             elif len(parts) == 2:
+                                 ghost_dataset, ghost_table = parts
+                             
+                             missing_nodes[ghost_id] = {
+                                 "id": ghost_id,
+                                 "label": ghost_table,
+                                 "layer": "external", # Special layer for discovered nodes
+                                 "type": "table",
+                                 "project": ghost_project,
+                                 "dataset": ghost_dataset,
+                                 "path": "discovered",
+                                 "dependencies": [],
+                                 "content": "-- Discovered dependency"
+                             }
+                             
+                         # Add edge from ghost node to current node
+                         edges.append({
+                            "id": f"{ghost_id}-{source_id}",
+                            "source": ghost_id,
+                            "target": source_id,
+                            "animated": True,
+                            "style": {"stroke": "#ff9f1c", "strokeDasharray": "5,5"} # Distinct style
+                         })
                          
-                         missing_nodes[ghost_id] = {
-                             "id": ghost_id,
-                             "label": ghost_table,
-                             "layer": "external", # Special layer for discovered nodes
-                             "type": "table",
-                             "project": ghost_project,
-                             "dataset": ghost_dataset,
-                             "path": "discovered",
-                             "dependencies": [],
-                             "content": "-- Discovered dependency"
-                         }
-                         
-                     # Add edge from ghost node to current node
-                     edges.append({
-                        "id": f"{ghost_id}-{source_id}",
-                        "source": ghost_id,
-                        "target": source_id,
-                        "animated": True,
-                        "style": {"stroke": "#ff9f1c", "strokeDasharray": "5,5"} # Distinct style
-                     })
-                     
-                     # Initialize incoming count for ghost node if not present (it captures its own incoming deps? no, it's a source usually)
-                     # But we should track if it has incoming edges? (Unlikely as we don't parse it)
-                     incoming_edges_count[source_id] = incoming_edges_count.get(source_id, 0) + 1
+                         incoming_edges_count[source_id] = incoming_edges_count.get(source_id, 0) + 1
 
 
     # Merge missing nodes into the main tables list for node creation
