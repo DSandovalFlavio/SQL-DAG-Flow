@@ -20,6 +20,7 @@ import {
   Hand, MousePointer2, RefreshCw, Globe
 } from 'lucide-react';
 import SelectionToolbar from './SelectionToolbar';
+import LayerStats from './LayerStats';
 
 // Dagre layout function removed. Using ELK from ./algorithms/elk
 
@@ -108,16 +109,46 @@ const Flow = () => {
     let newNodes = [...nodes];
 
     if (direction === 'horizontal') {
+      // Align to same Y → horizontal row
+      const avgY = selectedNodes.reduce((acc, n) => acc + n.position.y, 0) / selectedNodes.length;
+      newNodes = newNodes.map((n) => {
+        if (n.selected) return { ...n, position: { ...n.position, y: avgY } };
+        return n;
+      });
+    } else if (direction === 'vertical') {
+      // Align to same X → vertical column
       const avgX = selectedNodes.reduce((acc, n) => acc + n.position.x, 0) / selectedNodes.length;
       newNodes = newNodes.map((n) => {
         if (n.selected) return { ...n, position: { ...n.position, x: avgX } };
         return n;
       });
-    } else if (direction === 'vertical') {
-      const avgY = selectedNodes.reduce((acc, n) => acc + n.position.y, 0) / selectedNodes.length;
+    } else if (direction === 'distributeH') {
+      // Evenly distribute along X axis
+      const sorted = [...selectedNodes].sort((a, b) => a.position.x - b.position.x);
+      const minX = sorted[0].position.x;
+      const maxX = sorted[sorted.length - 1].position.x;
+      const step = sorted.length > 1 ? (maxX - minX) / (sorted.length - 1) : 0;
+      const posMap = {};
+      sorted.forEach((n, i) => { posMap[n.id] = minX + step * i; });
+      newNodes = newNodes.map((n) => n.selected ? { ...n, position: { ...n.position, x: posMap[n.id] } } : n);
+    } else if (direction === 'distributeV') {
+      // Evenly distribute along Y axis
+      const sorted = [...selectedNodes].sort((a, b) => a.position.y - b.position.y);
+      const minY = sorted[0].position.y;
+      const maxY = sorted[sorted.length - 1].position.y;
+      const step = sorted.length > 1 ? (maxY - minY) / (sorted.length - 1) : 0;
+      const posMap = {};
+      sorted.forEach((n, i) => { posMap[n.id] = minY + step * i; });
+      newNodes = newNodes.map((n) => n.selected ? { ...n, position: { ...n.position, y: posMap[n.id] } } : n);
+    } else if (direction === 'compact') {
+      // Tighten spacing: move nodes 50% closer to center
+      const avgX = selectedNodes.reduce((a, n) => a + n.position.x, 0) / selectedNodes.length;
+      const avgY = selectedNodes.reduce((a, n) => a + n.position.y, 0) / selectedNodes.length;
       newNodes = newNodes.map((n) => {
-        if (n.selected) return { ...n, position: { ...n.position, y: avgY } };
-        return n;
+        if (!n.selected) return n;
+        const dx = n.position.x - avgX;
+        const dy = n.position.y - avgY;
+        return { ...n, position: { x: avgX + dx * 0.5, y: avgY + dy * 0.5 } };
       });
     }
     setNodes(newNodes);
@@ -251,16 +282,104 @@ const Flow = () => {
     }
   }, [setNodes, setEdges, rfInstance, visibleLayers, onNodeContextMenu, onEdit, handleApplyAction, theme, nodeStyle, palette, showCounts, dialect]);
 
+  // Undo/Redo History
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+  const pushUndo = useCallback(() => {
+    setUndoStack(prev => [...prev.slice(-30), { nodes: nodesRef.current.map(n => ({ id: n.id, position: { ...n.position } })) }]);
+    setRedoStack([]);
+  }, []);
+
+  const performUndo = useCallback(() => {
+    setUndoStack(prev => {
+      if (prev.length === 0) return prev;
+      const last = prev[prev.length - 1];
+      setRedoStack(r => [...r, { nodes: nodesRef.current.map(n => ({ id: n.id, position: { ...n.position } })) }]);
+      setNodes(nds => nds.map(n => {
+        const saved = last.nodes.find(s => s.id === n.id);
+        return saved ? { ...n, position: saved.position } : n;
+      }));
+      return prev.slice(0, -1);
+    });
+  }, [setNodes]);
+
+  const performRedo = useCallback(() => {
+    setRedoStack(prev => {
+      if (prev.length === 0) return prev;
+      const next = prev[prev.length - 1];
+      setUndoStack(u => [...u, { nodes: nodesRef.current.map(n => ({ id: n.id, position: { ...n.position } })) }]);
+      setNodes(nds => nds.map(n => {
+        const saved = next.nodes.find(s => s.id === n.id);
+        return saved ? { ...n, position: saved.position } : n;
+      }));
+      return prev.slice(0, -1);
+    });
+  }, [setNodes]);
+
   // Effect hooks for global shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === 'Control') {
+      // Skip if user is typing in an input/textarea
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      // Ctrl+Z / Cmd+Z = Undo
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
+        e.preventDefault();
+        performUndo();
+        return;
+      }
+      // Ctrl+Shift+Z / Cmd+Shift+Z = Redo
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'Z') {
+        e.preventDefault();
+        performRedo();
+        return;
+      }
+      // Ctrl+A / Cmd+A = Select All
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        e.preventDefault();
+        setNodes(nds => nds.map(n => ({ ...n, selected: !n.hidden })));
+        return;
+      }
+      // Ctrl+F / Cmd+F = Open sidebar with search focus
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        setSidebarOpen(true);
+        return;
+      }
+      // Delete/Backspace = Hide selected nodes
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const selected = nodesRef.current.filter(n => n.selected);
+        if (selected.length > 0) {
+          e.preventDefault();
+          setHiddenNodeIds(prev => [...new Set([...prev, ...selected.map(n => n.id)])]);
+        }
+        return;
+      }
+      // Space = Toggle pan/select mode
+      if (e.key === ' ') {
+        e.preventDefault();
         setSelectionMode(prev => prev === 'pan' ? 'select' : 'pan');
+        return;
+      }
+      // Escape = Deselect / Close panels
+      if (e.key === 'Escape') {
+        setSelectedNode(null);
+        setLineageNodes(null);
+        setDetailsNode(null);
+        setViewSettingsOpen(false);
+        setNodes(nds => nds.map(n => ({ ...n, selected: false })));
+        return;
+      }
+      // F = Fit view
+      if (e.key === 'f' && !e.ctrlKey && !e.metaKey) {
+        rfInstance?.fitView({ duration: 500 });
+        return;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [performUndo, performRedo, setNodes, rfInstance]);
 
 
 
@@ -378,6 +497,12 @@ const Flow = () => {
           ...edge,
           animated,
           zIndex,
+          labelStyle: { fontSize: 9, fontWeight: 600, fill: stroke },
+          labelBgStyle: {
+            fill: theme === 'dark' ? '#1a1a1a' : '#fff',
+            fillOpacity: 0.85,
+            rx: 3, ry: 3
+          },
           style: {
             ...edge.style,
             stroke,
@@ -1185,12 +1310,41 @@ const Flow = () => {
 
       <SelectionToolbar
         selectedCount={nodes.filter(n => n.selected).length}
-        onAlign={alignNodes}
+        onAlign={(dir) => { pushUndo(); alignNodes(dir); }}
         onClearSelection={() => {
           setNodes(nds => nds.map(n => ({ ...n, selected: false })));
         }}
+        onBatchLayerChange={async (newLayer) => {
+          const selectedNodes = nodes.filter(n => n.selected && n.data.layer !== 'external' && n.data.details?.path);
+          if (selectedNodes.length === 0) return;
+          if (!window.confirm(`Move ${selectedNodes.length} file(s) to the '${newLayer}' layer?`)) return;
+          let successCount = 0;
+          for (const node of selectedNodes) {
+            try {
+              let filePath = node.data.details.path;
+              if (currentPath && filePath.startsWith(currentPath)) {
+                filePath = filePath.substring(currentPath.length);
+                if (filePath.startsWith('/') || filePath.startsWith('\\')) filePath = filePath.substring(1);
+              }
+              filePath = filePath.replace(/\\/g, '/');
+              await moveFile(filePath, newLayer);
+              successCount++;
+            } catch (error) {
+              console.error(`Error moving ${node.data.label}:`, error);
+            }
+          }
+          if (successCount > 0) {
+            refreshGraphData();
+            alert(`${successCount} file(s) moved to ${newLayer}`);
+          }
+        }}
         theme={theme}
       />
+
+      {/* Layer Statistics */}
+      {!isExporting && (
+        <LayerStats nodes={nodes} edges={edges} theme={theme} />
+      )}
 
       {/* Config List Modal */}
       {
@@ -1245,6 +1399,8 @@ const Flow = () => {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        minZoom={0.05}
+        maxZoom={4}
         onNodeClick={(event, node) => {
           setSelectedNode(prev => (prev && prev.id === node.id && !lineageNodes) ? null : node.data);
           setLineageNodes(null);
@@ -1255,6 +1411,7 @@ const Flow = () => {
           setLineageNodes(fullLineage);
           setSelectedNode(node.data); // Also set as active focus
         }}
+        onNodeDragStop={() => pushUndo()}
         panOnDrag={selectionMode === 'pan'}
         selectionOnDrag={selectionMode === 'select'}
         panOnScroll={true}

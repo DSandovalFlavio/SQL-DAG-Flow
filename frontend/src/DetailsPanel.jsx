@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Globe, FilePlus, X, Edit2, Check, X as XIcon } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Globe, FilePlus, X, Edit2, Check, X as XIcon, ChevronDown, ChevronRight, Columns, FolderOpen } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
@@ -280,6 +280,30 @@ const DetailsPanel = ({
                                     </div>
                                 </div>
 
+                                {/* File Path */}
+                                {node.details?.path && (
+                                    <div style={{ marginBottom: '16px' }}>
+                                        <div style={{ fontSize: '12px', opacity: 0.6, color: textColor, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <FolderOpen size={12} /> File Path
+                                        </div>
+                                        <div style={{
+                                            fontSize: '11px',
+                                            color: textColor,
+                                            opacity: 0.8,
+                                            padding: '6px 10px',
+                                            background: isDark ? '#222' : '#f0f0f0',
+                                            borderRadius: '6px',
+                                            wordBreak: 'break-all',
+                                            fontFamily: 'monospace'
+                                        }}>
+                                            {node.details.path}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Schema Preview */}
+                                <SchemaPreview content={node.details?.content} isDark={isDark} textColor={textColor} borderColor={borderColor} />
+
                                 <div style={{ marginBottom: '10px', fontSize: '12px', opacity: 0.6, color: textColor }}>SQL Content</div>
                                 <div style={{
                                     border: `1px solid ${borderColor}`,
@@ -306,6 +330,119 @@ const DetailsPanel = ({
                     </>
                 )}
             </div>
+        </div>
+    );
+};
+
+// Schema Preview sub-component: extracts column info from DDL
+const SchemaPreview = ({ content, isDark, textColor, borderColor }) => {
+    const [isOpen, setIsOpen] = useState(false);
+
+    const columns = useMemo(() => {
+        if (!content) return [];
+
+        // Pass 1: DDL column definitions — CREATE TABLE t (col TYPE, ...)
+        const ddlMatch = content.match(/CREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW)\s+[^(]+\(([^)]+)\)/is);
+        if (ddlMatch) {
+            const colDefs = ddlMatch[1];
+            const cols = colDefs.split(',').map(col => {
+                const trimmed = col.trim();
+                if (!trimmed) return null;
+                const parts = trimmed.split(/\s+/);
+                const name = parts[0]?.replace(/`/g, '');
+                const type = parts.slice(1).join(' ');
+                return name ? { name, type } : null;
+            }).filter(Boolean);
+            if (cols.length > 0) return cols;
+        }
+
+        // Pass 2: Extract columns from SELECT clause (CTAS / Views)
+        // Find the final SELECT (after WITH/CTE block or AS keyword)
+        const selectMatch = content.match(/(?:^|\bAS\s+)\s*SELECT\s+([\s\S]+?)\s+FROM\b/im);
+        if (!selectMatch) return [];
+
+        const selectClause = selectMatch[1];
+        // Split by commas, but respect parentheses (for functions like COUNT(...))
+        const cols = [];
+        let depth = 0;
+        let current = '';
+        for (const char of selectClause) {
+            if (char === '(' || char === '[') depth++;
+            else if (char === ')' || char === ']') depth--;
+            else if (char === ',' && depth === 0) {
+                cols.push(current.trim());
+                current = '';
+                continue;
+            }
+            current += char;
+        }
+        if (current.trim()) cols.push(current.trim());
+
+        return cols.map(col => {
+            if (col === '*' || col.endsWith('.*')) return null;
+            // Check for AS alias
+            const asMatch = col.match(/\bAS\s+(\w+)\s*$/i);
+            if (asMatch) {
+                const expr = col.substring(0, asMatch.index).trim();
+                return { name: asMatch[1], type: expr };
+            }
+            // Simple column reference (possibly with table alias prefix)
+            const dotParts = col.split('.');
+            const simpleName = dotParts[dotParts.length - 1].trim();
+            if (/^\w+$/.test(simpleName)) {
+                return { name: simpleName, type: dotParts.length > 1 ? 'column' : 'column' };
+            }
+            // Expression without alias
+            return { name: col.length > 30 ? col.substring(0, 30) + '...' : col, type: 'expression' };
+        }).filter(Boolean);
+    }, [content]);
+
+    if (columns.length === 0) return null;
+
+    return (
+        <div style={{ marginBottom: '16px' }}>
+            <div
+                onClick={() => setIsOpen(!isOpen)}
+                style={{
+                    fontSize: '12px',
+                    opacity: 0.6,
+                    color: textColor,
+                    marginBottom: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    cursor: 'pointer',
+                    userSelect: 'none'
+                }}
+            >
+                {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                <Columns size={12} />
+                Schema ({columns.length} columns)
+            </div>
+            {isOpen && (
+                <div style={{
+                    border: `1px solid ${borderColor}`,
+                    borderRadius: '8px',
+                    overflow: 'hidden'
+                }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                        <thead>
+                            <tr style={{ background: isDark ? '#222' : '#f0f0f0' }}>
+                                <th style={{ padding: '6px 10px', textAlign: 'left', color: textColor, fontWeight: 600, borderBottom: `1px solid ${borderColor}` }}>Column</th>
+                                <th style={{ padding: '6px 10px', textAlign: 'left', color: textColor, fontWeight: 600, borderBottom: `1px solid ${borderColor}` }}>Type</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {columns.map((col, i) => (
+                                <tr key={i} style={{ borderBottom: i < columns.length - 1 ? `1px solid ${isDark ? '#333' : '#eee'}` : 'none' }}>
+                                    <td style={{ padding: '5px 10px', color: textColor, fontFamily: 'monospace', fontWeight: 500 }}>{col.name}</td>
+                                    <td style={{ padding: '5px 10px', color: textColor, opacity: 0.7, fontFamily: 'monospace' }}>{col.type}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </div>
     );
 };

@@ -130,6 +130,10 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                     if create_node and create_node.this:
                         # sqlglot represents the target as an exp.Table or exp.Schema
                         target_exp = create_node.this
+                        # Handle Schema wrapping (DDL with column definitions)
+                        # e.g. CREATE TABLE project.dataset.table (id INT64, name STRING)
+                        if isinstance(target_exp, exp.Schema):
+                            target_exp = target_exp.this
                         if isinstance(target_exp, exp.Table):
                             target_table_name = target_exp.name
                             dataset = target_exp.db or "default"
@@ -154,17 +158,56 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                          if parent_dir.lower() not in ["bronze", "bronce", "silver", "gold", "other"] and dataset == "default":
                              dataset = parent_dir
                     
-                    dependencies = set()
+                    dependencies = {}  # dep_name -> dep_type
                     
-                    # 1. Identify CTEs defined in the query to exclude them from dependencies
+                    # 1. Identify CTEs defined in the query and their internal dependencies
                     defined_ctes = {}
+                    cte_deps = {}  # cte_name -> {full_dep_name: dep_type}
+                    
                     for cte in parsed.find_all(exp.CTE):
-                        if cte.alias_or_name:
-                            # Extract the full CTE definition as SQL string
-                            # We can use cte.sql() or just the inner query
-                            # User likely wants the full "name AS ( ... )" or just the inner query
-                            # Let's give the full CTE expression for context
-                            defined_ctes[cte.alias_or_name] = cte.sql(dialect=dialect, pretty=True)
+                        cte_name = cte.alias_or_name
+                        if not cte_name:
+                            continue
+                        defined_ctes[cte_name] = cte.sql(dialect=dialect, pretty=True)
+                        
+                        # Extract tables referenced INSIDE this CTE definition
+                        cte_internal_deps = {}
+                        cte_join_tables = set()
+                        for j in cte.find_all(exp.Join):
+                            jt = j.find(exp.Table)
+                            if jt:
+                                cte_join_tables.add(jt.name)
+                        
+                        for t in cte.find_all(exp.Table):
+                            t_name = t.name
+                            # Skip self-references and references to other CTEs in the same query
+                            if t_name == target_table_name or t_name in defined_ctes:
+                                continue
+                            t_full = t_name
+                            if t.db:
+                                t_full = f"{t.db}.{t_name}"
+                                if t.catalog:
+                                    t_full = f"{t.catalog}.{t.db}.{t_name}"
+                            cte_internal_deps[t_full] = "JOIN" if t_name in cte_join_tables else "FROM"
+                        
+                        cte_deps[cte_name] = cte_internal_deps
+                    
+                    # Collect all table names that appear inside CTE definitions
+                    # These should NOT be direct dependencies of the parent model
+                    tables_inside_ctes = set()
+                    for cte_name, ct in cte_deps.items():
+                        for dep_key in ct:
+                            tables_inside_ctes.add(dep_key.split(".")[-1])
+                    
+                    # Detect JOIN tables for labeling (only at the top-level query, not inside CTEs)
+                    join_tables = set()
+                    for join_node in parsed.find_all(exp.Join):
+                        # Check this join is not inside a CTE
+                        parent_cte = join_node.find_ancestor(exp.CTE)
+                        if parent_cte is None:
+                            join_table = join_node.find(exp.Table)
+                            if join_table:
+                                join_tables.add(join_table.name)
                     
                     # Find all tables referenced in the query
                     for table in parsed.find_all(exp.Table):
@@ -180,18 +223,19 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                         if dep_name == target_table_name:
                             continue
                             
-                        # Internal CTE references
+                        # Internal CTE references (main query references a CTE)
                         if dep_name in defined_ctes:
-                            # Add strictly as a CTE dependency so we can visualize it if desired
-                            dependencies.add(f"cte:{filename_base}:{dep_name}")
+                            dependencies[f"cte:{filename_base}:{dep_name}"] = "CTE"
+                            continue
+                        
+                        # Skip tables that belong inside a CTE definition
+                        # These will be wired as CTE_node deps in build_graph
+                        if dep_name in tables_inside_ctes:
                             continue
 
-                        # If we haven't found a CREATE statement, this might just be a SELECT
-                        # and we treat the filename as the target.
-                        
-                        dependencies.add(full_name)
-                        # REMOVED: partial match addition to prevent double counting in visual metadata
-                        # matches are now handled in build_graph via fuzzy lookup
+                        # Regular external dependency at the main query level
+                        dep_type = "JOIN" if dep_name in join_tables else "FROM"
+                        dependencies[full_name] = dep_type
                              
                     tables[filename_base] = { 
                         # Use filename_base as unique ID for the graph to avoid ambiguity
@@ -203,9 +247,10 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                         "project": project,
                         "dataset": dataset,
                         "path": filepath,
-                        "dependencies": list(dependencies),
+                        "dependencies": dependencies,
                         "content": sql_content,
-                        "ctes": defined_ctes
+                        "ctes": defined_ctes,
+                        "cte_deps": cte_deps  # NEW: {cte_name: {dep_name: dep_type}}
                     }
                 except Exception as e:
                     print(f"Error parsing {filepath}: {e}")
@@ -217,7 +262,7 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                         "project": "n/a",
                         "dataset": "n/a",
                         "path": filepath,
-                        "dependencies": [],
+                        "dependencies": {},
                         "error": str(e),
                         "content": sql_content
                     }
@@ -260,7 +305,10 @@ def build_graph(tables, discovery_mode=False):
 
     # Create edges first (conceptually) to count dependencies
     for source_id, data in tables.items():
-        for dep in data["dependencies"]:
+        deps = data["dependencies"]
+        # Support both dict (name->type) and list (legacy) formats
+        dep_items = deps.items() if isinstance(deps, dict) else [(d, "FROM") for d in deps]
+        for dep, dep_type in dep_items:
             target_id = lookup.get(dep)
             
             # Fuzzy lookup: if exact match fails, try splitting by dot and matching last part (table name)
@@ -274,26 +322,23 @@ def build_graph(tables, discovery_mode=False):
                     "source": target_id,
                     "target": source_id,
                     "animated": True,
+                    "label": dep_type,
                     "style": {"stroke": "#b1b1b7"}
                 })
                 incoming_edges_count[source_id] = incoming_edges_count.get(source_id, 0) + 1
             else:
-                 # Discovery Mode: Handle missing dependencies OR CTEs
-                 if discovery_mode:
-                     
-                     # 1. Handle CTEs
-                     if dep.startswith("cte:"):
-                         # Format: cte:filename_base:cte_name
-                         parts = dep.split(":")
-                         if len(parts) >= 3:
-                             # Reconstruct in case name had colons (unlikely but safe)
-                             cte_name = ":".join(parts[2:])
-                             
-                             # CTE ID is the dependency string itself to be unique per file
+                 # Handle CTE dependency references
+                 if dep.startswith("cte:"):
+                     parts = dep.split(":")
+                     if len(parts) >= 3:
+                         cte_name = ":".join(parts[2:])
+                         cte_internal_deps = tables[source_id].get("cte_deps", {}).get(cte_name, {})
+                         
+                         if discovery_mode:
+                             # Discovery Mode: Create CTE ghost node with incoming edges
                              cte_id = dep
                              
                              if cte_id not in missing_nodes:
-                                 # Retrieve SQL content if available
                                  cte_content = f"-- CTE: {cte_name}"
                                  if source_id in tables and "ctes" in tables[source_id]:
                                      if cte_name in tables[source_id]["ctes"]:
@@ -302,30 +347,89 @@ def build_graph(tables, discovery_mode=False):
                                  missing_nodes[cte_id] = {
                                      "id": cte_id,
                                      "label": cte_name,
-                                     "layer": "cte",  # Special layer for CTEs
-                                     "type": "cte",   # Special type for CTEs
+                                     "layer": "cte",
+                                     "type": "cte",
                                      "project": "internal",
                                      "dataset": "cte",
                                      "path": "internal",
-                                     "dependencies": [],
+                                     "dependencies": {},
                                      "content": cte_content
                                  }
                                  
-                             # Edge from CTE to Table
+                                 # Wire CTE's internal dependencies as incoming edges
+                                 for inner_dep, inner_type in cte_internal_deps.items():
+                                     inner_target = lookup.get(inner_dep)
+                                     if not inner_target and "." in inner_dep:
+                                         inner_target = lookup.get(inner_dep.split(".")[-1])
+                                     
+                                     if inner_target:
+                                         edges.append({
+                                             "id": f"{inner_target}-{cte_id}",
+                                             "source": inner_target,
+                                             "target": cte_id,
+                                             "animated": True,
+                                             "label": inner_type,
+                                             "style": {"stroke": "#E91E63"}
+                                         })
+                                         incoming_edges_count[cte_id] = incoming_edges_count.get(cte_id, 0) + 1
+                                     else:
+                                         # Create ghost node for missing CTE dep
+                                         ghost_id = inner_dep
+                                         if ghost_id not in missing_nodes:
+                                             dep_parts = ghost_id.split('.')
+                                             ghost_project, ghost_dataset, ghost_table = "default", "default", ghost_id
+                                             if len(dep_parts) == 3:
+                                                 ghost_project, ghost_dataset, ghost_table = dep_parts
+                                             elif len(dep_parts) == 2:
+                                                 ghost_dataset, ghost_table = dep_parts
+                                             missing_nodes[ghost_id] = {
+                                                 "id": ghost_id, "label": ghost_table,
+                                                 "layer": "external", "type": "table",
+                                                 "project": ghost_project, "dataset": ghost_dataset,
+                                                 "path": "discovered", "dependencies": {},
+                                                 "content": "-- Discovered dependency (via CTE)"
+                                             }
+                                         edges.append({
+                                             "id": f"{ghost_id}-{cte_id}",
+                                             "source": ghost_id, "target": cte_id,
+                                             "animated": True, "label": inner_type,
+                                             "style": {"stroke": "#ff9f1c", "strokeDasharray": "5,5"}
+                                         })
+                                         incoming_edges_count[cte_id] = incoming_edges_count.get(cte_id, 0) + 1
+                                 
+                             # Edge from CTE to parent Table
                              edges.append({
                                 "id": f"{cte_id}-{source_id}",
                                 "source": cte_id,
                                 "target": source_id,
                                 "animated": True,
-                                "style": {"stroke": "#E91E63", "strokeDasharray": "2,2"} # Pink dashed for CTEs
+                                "label": "CTE",
+                                "style": {"stroke": "#E91E63", "strokeDasharray": "2,2"}
                              })
-                             # CTEs generally don't have incoming edges in this parser implementation yet
-                             # but we count for the target
                              incoming_edges_count[source_id] = incoming_edges_count.get(source_id, 0) + 1
-                         continue
+                         else:
+                             # Non-discovery: Flatten CTE deps as direct edges to parent
+                             for inner_dep, inner_type in cte_internal_deps.items():
+                                 inner_target = lookup.get(inner_dep)
+                                 if not inner_target and "." in inner_dep:
+                                     inner_target = lookup.get(inner_dep.split(".")[-1])
+                                 if inner_target and inner_target != source_id:
+                                     edge_id = f"{inner_target}-{source_id}"
+                                     # Avoid duplicate edges
+                                     if not any(e["id"] == edge_id for e in edges):
+                                         edges.append({
+                                             "id": edge_id,
+                                             "source": inner_target,
+                                             "target": source_id,
+                                             "animated": True,
+                                             "label": inner_type,
+                                             "style": {"stroke": "#b1b1b7"}
+                                         })
+                                         incoming_edges_count[source_id] = incoming_edges_count.get(source_id, 0) + 1
+                     continue
 
-                     # 2. Handle missing external nodes
-                     if not target_id:
+                 # Handle missing external nodes (discovery mode only)
+                 if discovery_mode and not target_id:
                          # Create a unique ID for the missing node
                          # Use the full dependency name as the ID
                          ghost_id = dep
