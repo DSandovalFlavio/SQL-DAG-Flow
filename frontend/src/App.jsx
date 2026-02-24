@@ -17,7 +17,7 @@ import {
   Menu, Layout,
   FolderOpen, FilePlus, Save, Image, Ruler,
   Moon, Sun, Eye, EyeOff, Grid, MessageSquare, BoxSelect, Settings,
-  Hand, MousePointer2, RefreshCw, Globe
+  Hand, MousePointer2, RefreshCw, Globe, BarChart3
 } from 'lucide-react';
 import SelectionToolbar from './SelectionToolbar';
 import LayerStats from './LayerStats';
@@ -66,6 +66,7 @@ const Flow = () => {
 
   const [visibleLayers, setVisibleLayers] = useState({ bronze: true, silver: true, gold: true, external: true, cte: true, other: true });
   const [showCounts, setShowCounts] = useState(true);
+  const [showStats, setShowStats] = useState(false);
 
   const nodeTypes = useMemo(() => ({ custom: CustomNode, annotation: AnnotationNode }), []);
 
@@ -1257,6 +1258,17 @@ const Flow = () => {
           <button onClick={() => addAnnotation('group')} title="Add Group" style={bottomButtonStyle}>
             <BoxSelect size={20} />
           </button>
+
+          <div style={{ width: 1, height: 20, background: borderColor }}></div>
+
+          {/* Statistics Toggle */}
+          <button
+            onClick={() => setShowStats(prev => !prev)}
+            title="Statistics"
+            style={{ ...bottomButtonStyle, opacity: showStats ? 1 : 0.6, position: 'relative' }}
+          >
+            <BarChart3 size={20} />
+          </button>
         </div>
       )
       }
@@ -1341,9 +1353,9 @@ const Flow = () => {
         theme={theme}
       />
 
-      {/* Layer Statistics */}
+      {/* Layer Statistics Popover */}
       {!isExporting && (
-        <LayerStats nodes={nodes} edges={edges} theme={theme} />
+        <LayerStats nodes={nodes} edges={edges} theme={theme} isOpen={showStats} onClose={() => setShowStats(false)} />
       )}
 
       {/* Config List Modal */}
