@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { Eye, EyeOff, Search, X, ChevronDown, ChevronRight, Database, Globe, FileText, FolderTree, Layers } from 'lucide-react';
+import { Eye, EyeOff, Search, X, ChevronDown, ChevronRight, Database, Globe, FileText, FolderTree, Layers, Code } from 'lucide-react';
 
 const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, onNodeClick }) => {
     const [searchTerm, setSearchTerm] = useState('');
+    const [searchInSQL, setSearchInSQL] = useState(false);
     const [groupMode, setGroupMode] = useState('layer'); // 'layer' | 'project'
     const [expandedGroups, setExpandedGroups] = useState({
         standard: true,
@@ -11,18 +12,40 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
     });
     const isDark = theme === 'dark';
 
+    // Shared filtering function
+    const filterNode = (n, searchLower) => {
+        if (!searchTerm) return true;
+        const label = n.data.label.toLowerCase();
+        const project = (n.data.details?.project || '').toLowerCase();
+        const dataset = (n.data.details?.dataset || '').toLowerCase();
+        const nameMatch = label.includes(searchLower) || project.includes(searchLower) || dataset.includes(searchLower);
+        if (nameMatch) return true;
+        if (searchInSQL && n.data.details?.content) {
+            return n.data.details.content.toLowerCase().includes(searchLower);
+        }
+        return false;
+    };
+
+    // Get SQL match context snippet for a node
+    const getSQLSnippet = (node, searchLower) => {
+        if (!searchInSQL || !searchTerm || !node.data.details?.content) return null;
+        const content = node.data.details.content;
+        const idx = content.toLowerCase().indexOf(searchLower);
+        if (idx === -1) return null;
+        const start = Math.max(0, idx - 20);
+        const end = Math.min(content.length, idx + searchTerm.length + 40);
+        let snippet = content.substring(start, end).replace(/\n/g, ' ').trim();
+        if (start > 0) snippet = '...' + snippet;
+        if (end < content.length) snippet = snippet + '...';
+        return snippet;
+    };
+
     // Layer-based grouping (original)
     const layerGroups = useMemo(() => {
         const searchLower = searchTerm.toLowerCase();
         const filtered = nodes
             .filter(n => n.type !== 'annotation')
-            .filter(n => {
-                if (!searchTerm) return true;
-                const label = n.data.label.toLowerCase();
-                const project = (n.data.details?.project || '').toLowerCase();
-                const dataset = (n.data.details?.dataset || '').toLowerCase();
-                return label.includes(searchLower) || project.includes(searchLower) || dataset.includes(searchLower);
-            });
+            .filter(n => filterNode(n, searchLower));
 
         const grouped = { standard: [], external: [], cte: [] };
         filtered.forEach(node => {
@@ -38,22 +61,16 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
             grouped[key].sort((a, b) => a.data.label.localeCompare(b.data.label));
         });
         return grouped;
-    }, [nodes, searchTerm]);
+    }, [nodes, searchTerm, searchInSQL]);
 
     // Project/Dataset-based grouping
     const projectGroups = useMemo(() => {
         const searchLower = searchTerm.toLowerCase();
         const filtered = nodes
             .filter(n => n.type !== 'annotation')
-            .filter(n => {
-                if (!searchTerm) return true;
-                const label = n.data.label.toLowerCase();
-                const project = (n.data.details?.project || '').toLowerCase();
-                const dataset = (n.data.details?.dataset || '').toLowerCase();
-                return label.includes(searchLower) || project.includes(searchLower) || dataset.includes(searchLower);
-            });
+            .filter(n => filterNode(n, searchLower));
 
-        const tree = {}; // project -> dataset -> nodes[]
+        const tree = {};
         filtered.forEach(node => {
             const project = node.data.details?.project || 'default';
             const dataset = node.data.details?.dataset || 'default';
@@ -61,16 +78,13 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
             if (!tree[project][dataset]) tree[project][dataset] = [];
             tree[project][dataset].push(node);
         });
-
-        // Sort nodes within each dataset
         Object.values(tree).forEach(datasets => {
             Object.values(datasets).forEach(nodeList => {
                 nodeList.sort((a, b) => a.data.label.localeCompare(b.data.label));
             });
         });
-
         return tree;
-    }, [nodes, searchTerm]);
+    }, [nodes, searchTerm, searchInSQL]);
 
     const toggleGroup = (group) => {
         setExpandedGroups(prev => ({ ...prev, [group]: !prev[group] }));
@@ -87,63 +101,84 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
     const renderNodeItem = (node) => {
         const isHidden = hiddenNodeIds.includes(node.id);
         return (
-            <div
-                key={node.id}
-                style={{
-                    padding: '5px 20px 5px 30px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    transition: 'background 0.2s',
-                    opacity: isHidden ? 0.5 : 1,
-                }}
-                className="sidebar-item"
-                onClick={() => onNodeClick && onNodeClick(node)}
-            >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', flex: 1 }}>
-                    <div style={{
-                        width: 6, height: 6, borderRadius: '50%',
-                        background: layerColors[node.data.layer] || '#888',
-                        flexShrink: 0
-                    }} />
-                    <span
+            <React.Fragment key={node.id}>
+                <div
+                    key={node.id}
+                    style={{
+                        padding: '5px 20px 5px 30px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: 'pointer',
+                        transition: 'background 0.2s',
+                        opacity: isHidden ? 0.5 : 1,
+                    }}
+                    className="sidebar-item"
+                    onClick={() => onNodeClick && onNodeClick(node)}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', flex: 1 }}>
+                        <div style={{
+                            width: 6, height: 6, borderRadius: '50%',
+                            background: layerColors[node.data.layer] || '#888',
+                            flexShrink: 0
+                        }} />
+                        <span
+                            style={{
+                                color: textColor,
+                                fontSize: '12px',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                maxWidth: '160px'
+                            }}
+                            title={node.data.label}
+                        >
+                            {node.data.label}
+                        </span>
+                        {node.data.incomingCount > 0 && (
+                            <span style={{
+                                fontSize: '10px',
+                                background: isDark ? '#333' : '#eee',
+                                padding: '1px 5px',
+                                borderRadius: '10px',
+                                color: isDark ? '#aaa' : '#666'
+                            }}>
+                                {node.data.incomingCount}
+                            </span>
+                        )}
+                    </div>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); toggleNodeVisibility(node.id); }}
                         style={{
-                            color: textColor,
-                            fontSize: '12px',
+                            background: 'transparent', border: 'none', cursor: 'pointer',
+                            color: isHidden ? (isDark ? '#666' : '#ccc') : (isDark ? '#fff' : '#000'),
+                            display: 'flex', alignItems: 'center', padding: '4px'
+                        }}
+                        title={isHidden ? "Show Node" : "Hide Node"}
+                    >
+                        {isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                </div>
+                {/* SQL match snippet */}
+                {searchInSQL && searchTerm && (() => {
+                    const snippet = getSQLSnippet(node, searchTerm.toLowerCase());
+                    if (!snippet) return null;
+                    return (
+                        <div style={{
+                            padding: '2px 20px 4px 38px',
+                            fontSize: '10px',
+                            fontFamily: 'monospace',
+                            color: isDark ? '#7ca8d8' : '#2563eb',
+                            opacity: 0.8,
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            maxWidth: '160px'
-                        }}
-                        title={node.data.label}
-                    >
-                        {node.data.label}
-                    </span>
-                    {node.data.incomingCount > 0 && (
-                        <span style={{
-                            fontSize: '10px',
-                            background: isDark ? '#333' : '#eee',
-                            padding: '1px 5px',
-                            borderRadius: '10px',
-                            color: isDark ? '#aaa' : '#666'
+                            textOverflow: 'ellipsis'
                         }}>
-                            {node.data.incomingCount}
-                        </span>
-                    )}
-                </div>
-                <button
-                    onClick={(e) => { e.stopPropagation(); toggleNodeVisibility(node.id); }}
-                    style={{
-                        background: 'transparent', border: 'none', cursor: 'pointer',
-                        color: isHidden ? (isDark ? '#666' : '#ccc') : (isDark ? '#fff' : '#000'),
-                        display: 'flex', alignItems: 'center', padding: '4px'
-                    }}
-                    title={isHidden ? "Show Node" : "Hide Node"}
-                >
-                    {isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
-            </div>
+                            {snippet}
+                        </div>
+                    );
+                })()}
+            </React.Fragment>
         );
     };
 
@@ -273,6 +308,25 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
                             color: isDark ? '#fff' : '#000', outline: 'none', fontSize: '12px'
                         }}
                     />
+                </div>
+                {/* SQL Content Search Toggle */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                    <button
+                        onClick={() => setSearchInSQL(!searchInSQL)}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '4px',
+                            padding: '4px 8px', fontSize: '10px', fontWeight: 600,
+                            border: 'none', borderRadius: '4px', cursor: 'pointer',
+                            background: searchInSQL ? (isDark ? '#1a4a7a' : '#dbeafe') : (isDark ? '#2a2a2a' : '#eee'),
+                            color: searchInSQL ? (isDark ? '#7ca8d8' : '#2563eb') : textColor,
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                        <Code size={12} /> Search in SQL
+                    </button>
+                    {searchInSQL && (
+                        <span style={{ fontSize: '9px', opacity: 0.5, color: textColor }}>Matches SQL file content</span>
+                    )}
                 </div>
                 {/* Group Mode Toggle */}
                 <div style={{ display: 'flex', background: isDark ? '#2a2a2a' : '#eee', borderRadius: '6px', padding: '2px' }}>

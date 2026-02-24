@@ -236,10 +236,84 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                         # Regular external dependency at the main query level
                         dep_type = "JOIN" if dep_name in join_tables else "FROM"
                         dependencies[full_name] = dep_type
+                    
+                    # ===== Business Rule Extraction =====
+                    business_rules = {
+                        "filters": [],       # WHERE conditions
+                        "case_logic": [],    # CASE statements
+                        "having": [],        # HAVING conditions
+                        "aggregations": [],  # Aggregate functions
+                    }
+                    
+                    # Extract WHERE clauses
+                    for where_node in parsed.find_all(exp.Where):
+                        try:
+                            where_sql = where_node.this.sql(dialect=dialect, pretty=False)
+                            business_rules["filters"].append(where_sql)
+                        except Exception:
+                            pass
+                    
+                    # Extract CASE statements
+                    for case_node in parsed.find_all(exp.Case):
+                        try:
+                            case_sql = case_node.sql(dialect=dialect, pretty=False)
+                            # Try to get the alias if available
+                            parent = case_node.parent
+                            alias = ""
+                            if hasattr(parent, 'alias') and parent.alias:
+                                alias = parent.alias
+                            label = f"{alias}: {case_sql}" if alias else case_sql
+                            business_rules["case_logic"].append(label)
+                        except Exception:
+                            pass
+                    
+                    # Extract HAVING clauses
+                    for having_node in parsed.find_all(exp.Having):
+                        try:
+                            having_sql = having_node.this.sql(dialect=dialect, pretty=False)
+                            business_rules["having"].append(having_sql)
+                        except Exception:
+                            pass
+                    
+                    # Extract aggregate functions
+                    agg_types = (exp.Count, exp.Sum, exp.Avg, exp.Min, exp.Max)
+                    for agg_node in parsed.find_all(*agg_types):
+                        try:
+                            agg_sql = agg_node.sql(dialect=dialect, pretty=False)
+                            parent = agg_node.parent
+                            alias = ""
+                            if hasattr(parent, 'alias') and parent.alias:
+                                alias = parent.alias
+                            label = f"{alias}: {agg_sql}" if alias else agg_sql
+                            business_rules["aggregations"].append(label)
+                        except Exception:
+                            pass
+                    
+                    # ===== Complexity Score =====
+                    # Weights: JOIN=3, CTE=2, Subquery=3, WHERE=1, CASE=2, Aggregation=1, UNION=2
+                    complexity_breakdown = {
+                        "joins": len(list(parsed.find_all(exp.Join))),
+                        "ctes": len(defined_ctes),
+                        "subqueries": len(list(parsed.find_all(exp.Subquery))),
+                        "filters": len(business_rules["filters"]),
+                        "case_statements": len(business_rules["case_logic"]),
+                        "aggregations": len(business_rules["aggregations"]),
+                        "unions": len(list(parsed.find_all(exp.Union))),
+                    }
+                    
+                    complexity_score = (
+                        complexity_breakdown["joins"] * 3 +
+                        complexity_breakdown["ctes"] * 2 +
+                        complexity_breakdown["subqueries"] * 3 +
+                        complexity_breakdown["filters"] * 1 +
+                        complexity_breakdown["case_statements"] * 2 +
+                        complexity_breakdown["aggregations"] * 1 +
+                        complexity_breakdown["unions"] * 2
+                    )
+                    
+                    complexity_breakdown["score"] = complexity_score
                              
                     tables[filename_base] = { 
-                        # Use filename_base as unique ID for the graph to avoid ambiguity
-                        # Visual label can be the actual table name
                         "id": filename_base,
                         "label": target_table_name,
                         "layer": layer,
@@ -250,7 +324,9 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                         "dependencies": dependencies,
                         "content": sql_content,
                         "ctes": defined_ctes,
-                        "cte_deps": cte_deps  # NEW: {cte_name: {dep_name: dep_type}}
+                        "cte_deps": cte_deps,
+                        "business_rules": business_rules,
+                        "complexity": complexity_breakdown
                     }
                 except Exception as e:
                     print(f"Error parsing {filepath}: {e}")

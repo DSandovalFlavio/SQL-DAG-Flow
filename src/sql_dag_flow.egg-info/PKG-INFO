@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: sql-dag-flow
-Version: 0.2.1
+Version: 0.3.0
 Summary: A sophisticated SQL lineage visualization tool for Medallion Architectures.
 Author-email: Flavio Sandoval <dsandovalflavio@gmail.com>
 License: MIT
@@ -72,8 +72,9 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
     *   **Select Tree**: One-click selection of an entire dependency chain for easy movement.
     *   **Hide/Show**: Toggle visibility of individual nodes or full branches.
 *   **Advanced Navigation**:
-    *   **Sidebar**: Grouped list of nodes with usage counts and click-to-center navigation.
-    *   **Details Panel**: View formatted SQL code, schema info, and configure node settings.
+    *   **Sidebar**: Grouped list of nodes with toggle between **By Layer** and **By Project/Dataset** views.
+    *   **SQL Content Search**: Search inside SQL file content across all nodes — find WHERE clauses, JOINs, or any keyword.
+    *   **Details Panel**: View formatted SQL code, schema preview (DDL, CTAS, Views), and node configuration.
 
 ### 📝 Notes & Annotations
 *   **Center Placement**: New notes spawn exactly in the center of your view.
@@ -81,6 +82,12 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
     *   **Markdown Support**: Write rich text notes.
     *   **Transparent & Borderless**:Create clean, floating text labels without boxes.
     *   **Groups**: Create visual containers to group related nodes.
+
+### 📊 Discovery & Analysis Tools (New ✨)
+*   **Business Rule Extraction**: Automatically detects and displays WHERE filters, CASE logic, HAVING clauses, and aggregations from each SQL model.
+*   **Complexity Scoring**: Weighted metric per node (JOINs×3, CTEs×2, Subqueries×3, Filters×1, CASE×2, Aggregations×1, UNIONs×2) with color-coded badges (🟢 Low, 🟡 Medium, 🟠 High, 🔴 Very High). Toggleable via ⚡ button.
+*   **Statistics Panel**: Centered popup with layer distribution bars, edge/source/sink/orphan counts, project/dataset tree, and architecture health validation.
+*   **Schema Preview**: Extracts columns from DDL, CTAS (`CREATE TABLE AS SELECT`), and `CREATE VIEW` statements.
 
 ### ⚙️ Customization
 *   **Premium UI**:
@@ -114,7 +121,7 @@ Install easily via `pip`:
 pip install sql-dag-flow
 ```
 
-To update to the latest version (**v0.2.1**):
+To update to the latest version (**v0.3.0**):
 
 ```bash
 pip install --upgrade sql-dag-flow

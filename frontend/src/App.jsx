@@ -17,7 +17,7 @@ import {
   Menu, Layout,
   FolderOpen, FilePlus, Save, Image, Ruler,
   Moon, Sun, Eye, EyeOff, Grid, MessageSquare, BoxSelect, Settings,
-  Hand, MousePointer2, RefreshCw, Globe, BarChart3
+  Hand, MousePointer2, RefreshCw, Globe, BarChart3, Zap
 } from 'lucide-react';
 import SelectionToolbar from './SelectionToolbar';
 import LayerStats from './LayerStats';
@@ -66,6 +66,7 @@ const Flow = () => {
 
   const [visibleLayers, setVisibleLayers] = useState({ bronze: true, silver: true, gold: true, external: true, cte: true, other: true });
   const [showCounts, setShowCounts] = useState(true);
+  const [showComplexity, setShowComplexity] = useState(true);
   const [showStats, setShowStats] = useState(false);
 
   const nodeTypes = useMemo(() => ({ custom: CustomNode, annotation: AnnotationNode }), []);
@@ -262,7 +263,7 @@ const Flow = () => {
           onContextMenu: n.type === 'custom' ? onNodeContextMenu : undefined,
           onEdit: n.type === 'annotation' ? onEdit : undefined,
           onAction: n.type === 'custom' ? handleApplyAction : undefined,
-          theme, styleMode: nodeStyle, palette, showCounts
+          theme, styleMode: nodeStyle, palette, showCounts, showComplexity
         }
       })));
       setEdges(data.edges);
@@ -281,7 +282,7 @@ const Flow = () => {
       }
       setCurrentConfigFile(filename); // Update current config file
     }
-  }, [setNodes, setEdges, rfInstance, visibleLayers, onNodeContextMenu, onEdit, handleApplyAction, theme, nodeStyle, palette, showCounts, dialect]);
+  }, [setNodes, setEdges, rfInstance, visibleLayers, onNodeContextMenu, onEdit, handleApplyAction, theme, nodeStyle, palette, showCounts, showComplexity, dialect]);
 
   // Undo/Redo History
   const [undoStack, setUndoStack] = useState([]);
@@ -405,6 +406,7 @@ const Flow = () => {
         if (newData.styleMode !== nodeStyle) { newData.styleMode = nodeStyle; changed = true; }
         if (newData.palette !== palette) { newData.palette = palette; changed = true; }
         if (newData.showCounts !== showCounts) { newData.showCounts = showCounts; changed = true; }
+        if (newData.showComplexity !== showComplexity) { newData.showComplexity = showComplexity; changed = true; }
         // functions usually stable but good to ensure
         newData.onContextMenu = onNodeContextMenu;
         newData.onAction = handleApplyAction;
@@ -425,7 +427,7 @@ const Flow = () => {
         return updatedNode;
       })
     );
-  }, [theme, nodeStyle, palette, visibleLayers, showCounts, hiddenNodeIds]);
+  }, [theme, nodeStyle, palette, visibleLayers, showCounts, showComplexity, hiddenNodeIds]);
 
   // 2. Update Edges (Selection Highlight)
   useEffect(() => {
@@ -531,7 +533,7 @@ const Flow = () => {
             onContextMenu: n.type === 'custom' ? onNodeContextMenu : undefined,
             onEdit: n.type === 'annotation' ? onEdit : undefined,
             onHide: n.type === 'custom' ? handleHideNode : undefined,
-            theme, styleMode: nodeStyle, palette, showCounts
+            theme, styleMode: nodeStyle, palette, showCounts, showComplexity
           }
         })));
         setEdges(savedState.edges || []);
@@ -1188,6 +1190,10 @@ const Flow = () => {
 
           <button onClick={() => setShowCounts(!showCounts)} title="Toggle Dependency Counts" style={{ ...bottomButtonStyle, opacity: showCounts ? 1 : 0.5 }}>
             <span style={{ fontSize: '14px', fontWeight: 'bold' }}>123</span>
+          </button>
+
+          <button onClick={() => setShowComplexity(!showComplexity)} title="Toggle Complexity Badges" style={{ ...bottomButtonStyle, opacity: showComplexity ? 1 : 0.5 }}>
+            <Zap size={20} />
           </button>
 
           <div style={{ width: 1, height: 20, background: borderColor }}></div>

@@ -139,6 +139,36 @@ const CustomNode = ({ id, data }) => {
                 )
             )}
 
+            {/* Complexity Score Badge */}
+            {data.showComplexity !== false && details?.complexity?.score > 0 && (
+                <div
+                    title={`Complexity: ${details.complexity.score} (J:${details.complexity.joins} C:${details.complexity.ctes} S:${details.complexity.subqueries} F:${details.complexity.filters} CASE:${details.complexity.case_statements} A:${details.complexity.aggregations})`}
+                    style={{
+                        position: 'absolute',
+                        top: '-8px',
+                        right: '-8px',
+                        background: details.complexity.score <= 3 ? '#2ecc71'
+                            : details.complexity.score <= 7 ? '#f39c12'
+                                : details.complexity.score <= 12 ? '#e67e22'
+                                    : '#e74c3c',
+                        color: '#fff',
+                        fontSize: '9px',
+                        fontWeight: 700,
+                        width: '22px',
+                        height: '22px',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+                        border: '2px solid ' + (isDark ? '#1e1e1e' : '#fff'),
+                        zIndex: 2
+                    }}
+                >
+                    {details.complexity.score}
+                </div>
+            )}
+
             {/* Hover Toolbar */}
             {onContextMenu && ( // Only show if interactive
                 <div style={{

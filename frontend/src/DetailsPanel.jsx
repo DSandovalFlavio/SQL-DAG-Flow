@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Globe, FilePlus, X, Edit2, Check, X as XIcon, ChevronDown, ChevronRight, Columns, FolderOpen } from 'lucide-react';
+import { Globe, FilePlus, X, Edit2, Check, X as XIcon, ChevronDown, ChevronRight, Columns, FolderOpen, Filter, Zap, GitBranch, Info } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
@@ -304,6 +304,12 @@ const DetailsPanel = ({
                                 {/* Schema Preview */}
                                 <SchemaPreview content={node.details?.content} isDark={isDark} textColor={textColor} borderColor={borderColor} />
 
+                                {/* Business Rules */}
+                                <BusinessRules rules={node.details?.business_rules} isDark={isDark} textColor={textColor} borderColor={borderColor} />
+
+                                {/* Complexity Breakdown */}
+                                <ComplexityBreakdown complexity={node.details?.complexity} isDark={isDark} textColor={textColor} borderColor={borderColor} />
+
                                 <div style={{ marginBottom: '10px', fontSize: '12px', opacity: 0.6, color: textColor }}>SQL Content</div>
                                 <div style={{
                                     border: `1px solid ${borderColor}`,
@@ -441,6 +447,140 @@ const SchemaPreview = ({ content, isDark, textColor, borderColor }) => {
                             ))}
                         </tbody>
                     </table>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// Business Rules sub-component
+const BusinessRules = ({ rules, isDark, textColor, borderColor }) => {
+    const [isOpen, setIsOpen] = useState(false);
+
+    if (!rules) return null;
+    const totalRules = Object.values(rules).reduce((s, arr) => s + arr.length, 0);
+    if (totalRules === 0) return null;
+
+    const ruleStyle = {
+        fontFamily: 'monospace',
+        fontSize: '11px',
+        padding: '4px 8px',
+        background: isDark ? '#1a1a2e' : '#f0f4ff',
+        borderRadius: '4px',
+        marginBottom: '3px',
+        color: textColor,
+        wordBreak: 'break-word',
+        lineHeight: 1.4,
+        borderLeft: '3px solid'
+    };
+
+    const sections = [
+        { key: 'filters', label: 'WHERE Filters', icon: <Filter size={11} />, color: '#3498db', data: rules.filters },
+        { key: 'case_logic', label: 'CASE Logic', icon: <GitBranch size={11} />, color: '#9b59b6', data: rules.case_logic },
+        { key: 'having', label: 'HAVING', icon: <Filter size={11} />, color: '#e67e22', data: rules.having },
+        { key: 'aggregations', label: 'Aggregations', icon: <Zap size={11} />, color: '#2ecc71', data: rules.aggregations },
+    ];
+
+    return (
+        <div style={{ marginBottom: '16px' }}>
+            <div
+                onClick={() => setIsOpen(!isOpen)}
+                style={{
+                    fontSize: '12px', opacity: 0.6, color: textColor, marginBottom: '6px',
+                    display: 'flex', alignItems: 'center', gap: '4px',
+                    cursor: 'pointer', userSelect: 'none'
+                }}
+            >
+                {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                <Filter size={12} />
+                Business Rules ({totalRules})
+            </div>
+            {isOpen && (
+                <div style={{ border: `1px solid ${borderColor}`, borderRadius: '8px', padding: '10px', background: isDark ? '#111' : '#fafafa' }}>
+                    {sections.filter(s => s.data && s.data.length > 0).map(section => (
+                        <div key={section.key} style={{ marginBottom: '10px' }}>
+                            <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: section.color, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                {section.icon} {section.label} ({section.data.length})
+                            </div>
+                            {section.data.map((rule, i) => (
+                                <div key={i} style={{ ...ruleStyle, borderLeftColor: section.color }}>
+                                    {rule.length > 120 ? rule.substring(0, 120) + '...' : rule}
+                                </div>
+                            ))}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// Complexity Breakdown sub-component
+const ComplexityBreakdown = ({ complexity, isDark, textColor, borderColor }) => {
+    const [isOpen, setIsOpen] = useState(false);
+
+    if (!complexity || complexity.score === 0) return null;
+
+    const score = complexity.score;
+    const level = score <= 3 ? 'Low' : score <= 7 ? 'Medium' : score <= 12 ? 'High' : 'Very High';
+    const levelColor = score <= 3 ? '#2ecc71' : score <= 7 ? '#f39c12' : score <= 12 ? '#e67e22' : '#e74c3c';
+
+    const metrics = [
+        { label: 'JOINs', count: complexity.joins, weight: 3, color: '#3498db' },
+        { label: 'CTEs', count: complexity.ctes, weight: 2, color: '#E91E63' },
+        { label: 'Subqueries', count: complexity.subqueries, weight: 3, color: '#9b59b6' },
+        { label: 'Filters', count: complexity.filters, weight: 1, color: '#e67e22' },
+        { label: 'CASE', count: complexity.case_statements, weight: 2, color: '#f39c12' },
+        { label: 'Aggregations', count: complexity.aggregations, weight: 1, color: '#2ecc71' },
+        { label: 'UNIONs', count: complexity.unions, weight: 2, color: '#1abc9c' },
+    ].filter(m => m.count > 0);
+
+    return (
+        <div style={{ marginBottom: '16px' }}>
+            <div
+                onClick={() => setIsOpen(!isOpen)}
+                style={{
+                    fontSize: '12px', opacity: 0.6, color: textColor, marginBottom: '6px',
+                    display: 'flex', alignItems: 'center', gap: '4px',
+                    cursor: 'pointer', userSelect: 'none'
+                }}
+            >
+                {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                <Zap size={12} />
+                Complexity: <span style={{ color: levelColor, fontWeight: 700 }}>{score}</span>
+                <span style={{ fontSize: '10px', color: levelColor, fontWeight: 600 }}>({level})</span>
+            </div>
+            {isOpen && (
+                <div style={{ border: `1px solid ${borderColor}`, borderRadius: '8px', padding: '10px', background: isDark ? '#111' : '#fafafa' }}>
+                    {/* Visual gauge */}
+                    <div style={{ height: '6px', background: isDark ? '#333' : '#eee', borderRadius: '3px', marginBottom: '10px', overflow: 'hidden' }}>
+                        <div style={{ width: `${Math.min(score / 20 * 100, 100)}%`, height: '100%', background: `linear-gradient(90deg, #2ecc71, ${levelColor})`, borderRadius: '3px', transition: 'width 0.3s' }} />
+                    </div>
+
+                    {/* Metric bars */}
+                    {metrics.map(m => (
+                        <div key={m.label} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', fontSize: '11px' }}>
+                            <span style={{ width: '80px', color: textColor, fontWeight: 500 }}>{m.label}</span>
+                            <span style={{ color: m.color, fontWeight: 700, width: '20px', textAlign: 'center' }}>{m.count}</span>
+                            <span style={{ color: isDark ? '#aaa' : '#666', fontSize: '10px' }}>× {m.weight}</span>
+                            <span style={{ color: isDark ? '#aaa' : '#666', fontSize: '10px' }}>=</span>
+                            <span style={{ fontWeight: 700, fontSize: '11px', color: m.color }}>{m.count * m.weight}</span>
+                        </div>
+                    ))}
+
+                    {/* Formula explanation */}
+                    <div style={{
+                        marginTop: '10px', padding: '8px', borderRadius: '6px',
+                        background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.03)',
+                        fontSize: '10px', color: textColor, lineHeight: 1.5
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                            <Info size={11} style={{ opacity: 0.7 }} />
+                            <strong>How the Score is Calculated</strong>
+                        </div>
+                        <span style={{ opacity: 0.8 }}>JOINs×3 + CTEs×2 + Subqueries×3 + Filters×1 + CASE×2 + Aggregations×1 + UNIONs×2</span><br />
+                        <span style={{ opacity: 0.6, fontSize: '9px' }}>Low ≤3 · Medium ≤7 · High ≤12 · Very High &gt;12</span>
+                    </div>
                 </div>
             )}
         </div>
