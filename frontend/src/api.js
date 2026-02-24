@@ -108,3 +108,21 @@ export const fetchFilteredGraph = async (subfolders, dialect = 'bigquery', disco
         return { nodes: [], edges: [], error: "Failed to fetch graph" };
     }
 };
+
+export const moveFile = async (currentPath, targetLayer) => {
+    try {
+        const response = await fetch(`${API_URL}/files/move`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ current_path: currentPath, target_layer: targetLayer }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Failed to move file");
+        return data;
+    } catch (error) {
+        console.error("Error moving file:", error);
+        throw error;
+    }
+};

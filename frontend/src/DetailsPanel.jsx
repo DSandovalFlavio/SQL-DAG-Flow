@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Globe, FilePlus, X } from 'lucide-react';
+import { Globe, FilePlus, X, Edit2, Check, X as XIcon } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
@@ -9,10 +9,20 @@ const DetailsPanel = ({
     onUpdateNode,
     onCreateFile,
     theme,
-    onDelete
+    onDelete,
+    onLayerChange
 }) => {
     const [width, setWidth] = useState(450);
     const [isDragging, setIsDragging] = useState(false);
+    const [isEditingLayer, setIsEditingLayer] = useState(false);
+    const [tempLayer, setTempLayer] = useState(node?.layer || 'other');
+
+    useEffect(() => {
+        if (node) {
+            setTempLayer(node.layer || 'other');
+            setIsEditingLayer(false);
+        }
+    }, [node]);
 
     // Theme-based styles
     const isDark = theme === 'dark';
@@ -193,8 +203,68 @@ const DetailsPanel = ({
                             <>
                                 <div style={{ marginBottom: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                                     <div>
-                                        <div style={{ fontSize: '12px', opacity: 0.6, color: textColor }}>Layer</div>
-                                        <div style={{ fontSize: '14px', color: textColor, textTransform: 'capitalize' }}>{node.layer}</div>
+                                        <div style={{ fontSize: '12px', opacity: 0.6, color: textColor, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                            <span>Layer</span>
+                                            {node.layer !== 'external' && node.details?.path && onLayerChange && !isEditingLayer && (
+                                                <button
+                                                    onClick={() => setIsEditingLayer(true)}
+                                                    style={{ background: 'transparent', border: 'none', color: theme === 'dark' ? '#aaa' : '#666', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }}
+                                                    title="Edit Layer"
+                                                >
+                                                    <Edit2 size={12} />
+                                                </button>
+                                            )}
+                                        </div>
+                                        {isEditingLayer ? (
+                                            <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginTop: '4px' }}>
+                                                <select
+                                                    value={tempLayer}
+                                                    onChange={(e) => setTempLayer(e.target.value)}
+                                                    style={{
+                                                        background: isDark ? '#333' : '#eee',
+                                                        border: 'none',
+                                                        color: textColor,
+                                                        padding: '4px 8px',
+                                                        borderRadius: '4px',
+                                                        fontSize: '14px',
+                                                        textTransform: 'capitalize',
+                                                        flex: 1,
+                                                        outline: 'none'
+                                                    }}
+                                                >
+                                                    <option value="bronze">Bronze</option>
+                                                    <option value="silver">Silver</option>
+                                                    <option value="gold">Gold</option>
+                                                    <option value="other">Other</option>
+                                                </select>
+                                                <button
+                                                    onClick={async () => {
+                                                        if (tempLayer !== node.layer) {
+                                                            if (window.confirm(`Are you sure you want to physically move this file to the ${tempLayer} layer?`)) {
+                                                                await onLayerChange(node, tempLayer);
+                                                            }
+                                                        }
+                                                        setIsEditingLayer(false);
+                                                    }}
+                                                    style={{ background: '#2ecc71', color: 'white', border: 'none', borderRadius: '4px', padding: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                                    title="Save Layer"
+                                                >
+                                                    <Check size={14} />
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setTempLayer(node.layer || 'other');
+                                                        setIsEditingLayer(false);
+                                                    }}
+                                                    style={{ background: '#e74c3c', color: 'white', border: 'none', borderRadius: '4px', padding: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                                    title="Cancel"
+                                                >
+                                                    <XIcon size={14} />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div style={{ fontSize: '14px', color: textColor, textTransform: 'capitalize' }}>{node.layer}</div>
+                                        )}
                                     </div>
                                     <div>
                                         <div style={{ fontSize: '12px', opacity: 0.6, color: textColor }}>Type</div>

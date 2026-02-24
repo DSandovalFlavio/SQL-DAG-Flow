@@ -10,6 +10,7 @@ import json
 import webbrowser
 import threading
 import time
+import shutil
 from .parser import parse_sql_files, build_graph
 
 app = FastAPI()
@@ -188,6 +189,51 @@ def create_file(request: CreateFileRequest):
             
         return {"message": f"File created at {request.path}", "path": full_path}
             
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class MoveFileRequest(BaseModel):
+    current_path: str
+    target_layer: str
+
+@app.post("/files/move")
+def move_file(request: MoveFileRequest):
+    try:
+        target_layer = request.target_layer.strip()
+        if ".." in request.current_path:
+             raise HTTPException(status_code=400, detail="Invalid path")
+             
+        current_path = os.path.join(CURRENT_DIRECTORY, request.current_path)
+        if not os.path.exists(current_path):
+             raise HTTPException(status_code=404, detail="Original file not found")
+             
+        filename = os.path.basename(current_path)
+        dir_name = os.path.dirname(current_path)
+        
+        parent_dir_name = os.path.basename(dir_name).lower()
+        if parent_dir_name in ["bronze", "bronce", "silver", "gold", "other"]:
+            new_dir = os.path.dirname(dir_name)
+            new_dir = os.path.join(new_dir, target_layer)
+        else:
+            new_dir = os.path.join(dir_name, target_layer)
+            
+        new_full_path = os.path.join(new_dir, filename)
+        
+        if new_full_path == current_path:
+             return {"message": "File already in target layer", "path": request.current_path}
+             
+        if os.path.exists(new_full_path):
+             raise HTTPException(status_code=400, detail="A file with this name already exists in the target layer folder")
+             
+        os.makedirs(new_dir, exist_ok=True)
+        shutil.move(current_path, new_full_path)
+        
+        # Normalize response relative path 
+        rel_new_path = os.path.relpath(new_full_path, CURRENT_DIRECTORY).replace(os.sep, '/')
+        return {"message": f"File moved to {target_layer}", "path": rel_new_path}
+
     except HTTPException as he:
         raise he
     except Exception as e:

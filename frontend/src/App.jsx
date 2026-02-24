@@ -4,7 +4,7 @@ import '@xyflow/react/dist/style.css';
 // import dagre from 'dagre'; // Removed in favor of ELK
 import { getLayoutedElements } from './algorithms/elk';
 import { toPng, toSvg } from 'html-to-image';
-import { fetchGraph, saveGraph, loadGraphState, setPath, getPath, scanFolders, fetchFilteredGraph } from './api';
+import { fetchGraph, saveGraph, loadGraphState, setPath, getPath, scanFolders, fetchFilteredGraph, moveFile } from './api';
 import './index.css';
 import CustomNode from './CustomNode';
 import AnnotationNode from './AnnotationNode';
@@ -32,6 +32,7 @@ const Flow = () => {
   const [dialect, setDialect] = useState('bigquery');
   const [discoveryMode, setDiscoveryMode] = useState(false);
   const [selectedNode, setSelectedNode] = useState(null);
+  const [lineageNodes, setLineageNodes] = useState(null); // Set form to highlight full lineage edges
   const [detailsNode, setDetailsNode] = useState(null); // Separate state for side panel
   const [selectionMode, setSelectionMode] = useState('pan'); // 'pan' or 'select'
   const [contextMenu, setContextMenu] = useState(null); // { x, y }
@@ -85,6 +86,7 @@ const Flow = () => {
     } else {
       // Single node context menu -> Open details
       setSelectedNode(nodeData);
+      setLineageNodes(null);
       setDetailsNode(nodeData);
       // setSidebarOpen(true); // User wants details panel (right), not node list sidebar (left)
       setContextMenu(null);
@@ -94,6 +96,7 @@ const Flow = () => {
   const onEdit = useCallback((nodeData) => {
     // For annotations, usually just select
     setSelectedNode(nodeData);
+    setLineageNodes(null);
     setDetailsNode(nodeData); // Also open details panel for editing
     setContextMenu(null);
   }, []);
@@ -248,10 +251,16 @@ const Flow = () => {
     }
   }, [setNodes, setEdges, rfInstance, visibleLayers, onNodeContextMenu, onEdit, handleApplyAction, theme, nodeStyle, palette, showCounts, dialect]);
 
-  // ... (Effect hooks) ...
-
-  // Update onNodeClick in ReactFlow component to close details
-  // ...
+  // Effect hooks for global shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Control') {
+        setSelectionMode(prev => prev === 'pan' ? 'select' : 'pan');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
 
 
@@ -311,7 +320,13 @@ const Flow = () => {
         let animated = false;
         let zIndex = 0;
 
-        if (selectedNode) {
+        // If lineageNodes is set (Double click), check if edge is part of lineage graph
+        let isInLineage = false;
+        if (lineageNodes) {
+          isInLineage = lineageNodes.has(edge.source) && lineageNodes.has(edge.target);
+        }
+
+        if (selectedNode && !lineageNodes) {
           if (isIncoming) {
             stroke = theme === 'dark' ? '#00b4d8' : '#0077b6';
             strokeWidth = 3;
@@ -320,6 +335,18 @@ const Flow = () => {
             zIndex = 10;
           } else if (isOutgoing) {
             stroke = theme === 'dark' ? '#ff4d6d' : '#c9184a';
+            strokeWidth = 3;
+            opacity = 1;
+            animated = true;
+            zIndex = 10;
+          } else {
+            opacity = 0.1;
+            stroke = '#555';
+            animated = false;
+          }
+        } else if (lineageNodes) {
+          if (isInLineage) {
+            stroke = theme === 'dark' ? '#9d4edd' : '#7b2cbf'; // Purple hue for full lineage distinct from immediate red/blue
             strokeWidth = 3;
             opacity = 1;
             animated = true;
@@ -360,7 +387,7 @@ const Flow = () => {
         };
       })
     );
-  }, [theme, selectedNode, setEdges]);
+  }, [theme, selectedNode, lineageNodes, setEdges]);
 
   // Initial Load
   useEffect(() => {
@@ -457,7 +484,7 @@ const Flow = () => {
     // Actually, the user complaint is "ignora todo y vuelve al inicio". 
     // So avoiding getLayoutedElements on refresh is key if we want to keep manual moves.
 
-    let finalNodes = styledNodes;
+    let finalNodes = [...styledNodes, ...nodes.filter(n => n.type === 'annotation')];
     let finalEdges = data.edges;
 
     // Only run auto-layout if we really strictly need it (empty start)
@@ -805,6 +832,7 @@ const Flow = () => {
 
                 // Also select the node
                 setSelectedNode(node);
+                setLineageNodes(null);
                 // setDetailsNode(node); // Optional: open details panel too? User just said "move interface to find it easier"
                 // Let's just select and highlight it
                 setNodes(nds => nds.map(n => ({
@@ -1132,6 +1160,25 @@ const Flow = () => {
               setGhostNodeData(node);
               setFileCreationModalOpen(true);
             }}
+            onLayerChange={async (node, newLayer) => {
+              try {
+                if (node.details?.path) {
+                  // Convert absolute path to relative for the backend
+                  let filePath = node.details.path;
+                  if (currentPath && filePath.startsWith(currentPath)) {
+                    filePath = filePath.substring(currentPath.length);
+                    if (filePath.startsWith('/') || filePath.startsWith('\\')) {
+                      filePath = filePath.substring(1);
+                    }
+                  }
+                  filePath = filePath.replace(/\\/g, '/');
+                  await moveFile(filePath, newLayer);
+                  refreshGraphData();
+                }
+              } catch (error) {
+                alert("Error moving file: " + error.message);
+              }
+            }}
           />
         )
       }
@@ -1199,8 +1246,14 @@ const Flow = () => {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onNodeClick={(event, node) => {
-          setSelectedNode(prev => (prev && prev.id === node.id) ? null : node.data);
+          setSelectedNode(prev => (prev && prev.id === node.id && !lineageNodes) ? null : node.data);
+          setLineageNodes(null);
           setDetailsNode(null); // Close details on left click
+        }}
+        onNodeDoubleClick={(event, node) => {
+          const fullLineage = getLineage(node.id);
+          setLineageNodes(fullLineage);
+          setSelectedNode(node.data); // Also set as active focus
         }}
         panOnDrag={selectionMode === 'pan'}
         selectionOnDrag={selectionMode === 'select'}
