@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: sql-dag-flow
-Version: 0.3.0
+Version: 0.4.0
 Summary: A sophisticated SQL lineage visualization tool for Medallion Architectures.
 Author-email: Flavio Sandoval <dsandovalflavio@gmail.com>
 License: MIT
@@ -83,16 +83,26 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
     *   **Transparent & Borderless**:Create clean, floating text labels without boxes.
     *   **Groups**: Create visual containers to group related nodes.
 
-### 📊 Discovery & Analysis Tools (New ✨)
+### 📊 Discovery & Analysis Tools
 *   **Business Rule Extraction**: Automatically detects and displays WHERE filters, CASE logic, HAVING clauses, and aggregations from each SQL model.
 *   **Complexity Scoring**: Weighted metric per node (JOINs×3, CTEs×2, Subqueries×3, Filters×1, CASE×2, Aggregations×1, UNIONs×2) with color-coded badges (🟢 Low, 🟡 Medium, 🟠 High, 🔴 Very High). Toggleable via ⚡ button.
 *   **Statistics Panel**: Centered popup with layer distribution bars, edge/source/sink/orphan counts, project/dataset tree, and architecture health validation.
 *   **Schema Preview**: Extracts columns from DDL, CTAS (`CREATE TABLE AS SELECT`), and `CREATE VIEW` statements.
 
+### 🎨 Linear-Inspired UI (New in v0.4.0 ✨)
+*   **Design Token System**: ~80 CSS custom properties for consistent theming across all components.
+*   **Premium Dark Theme**: Deep `#0d0d0d` canvas with warm white text (`#e8e8e6`), never pure white.
+*   **Refined Light Theme**: Warm off-white `#f7f6f3` backgrounds — never harsh pure white.
+*   **Glassmorphism Toolbars**: `backdrop-filter: blur(16px)` on all floating panels.
+*   **Violet-Indigo Accent**: Premium `#7c6aef` accent color replacing generic blues/greens.
+*   **Smooth Animations**: `fadeIn` and `slideUp` micro-animations on popovers and modals.
+*   **Custom Scrollbars**: Subtle, styled scrollbars matching the theme.
+*   **Focus Rings**: Accessible focus indicators using the accent color.
+
 ### ⚙️ Customization
 *   **Premium UI**:
     *   **Themes**: Toggle between Light and Dark modes.
-    *   **Palettes**: Choose from Standard, Vivid, or Pastel color schemes to match your presentation style.
+    *   **Palettes**: Choose from **Standard**, **Vivid**, **Pastel**, or **Linear** (new — muted, LCH-inspired tones) color schemes.
     *   **Styles**: Switch between "Full" (colored body) and "Minimal" (colored border) node styles.
 *   **Export**: Save high-resolution **PNG** or vector **SVG** diagrams for documentation.
 
@@ -102,14 +112,14 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
 
 SQL DAG Flow uses distinct colors to identify node types. You can switch between these palettes in the Settings.
 
-| Node Type | Layer / Meaning | Standard | Vivid | Pastel |
-| :--- | :--- | :--- | :--- | :--- |
-| **Bronze** | Raw Ingestion | 🟤 Brown (`#8B4513`) | 🟠 Orange (`#FF5722`) | 🟤 Pale Brown (`#D7CCC8`) |
-| **Silver** | Cleaned / Conformed | ⚪ Gray (`#708090`) | 🔵 Blue (`#29B6F6`) | ⚪ Blue Grey (`#CFD8DC`) |
-| **Gold** | Business Aggregates | 🟡 Gold (`#DAA520`) | 🟡 Yellow (`#FFEB3B`) | 🟡 Pale Yellow (`#FFF9C4`) |
-| **External** | Missing / Ghost Node | 🟠 Dark Orange (`#D35400`) | 🟠 Neon Orange (`#FF9800`) | 🟠 Peach (`#FFE0B2`) |
-| **CTE** | Internal Common Table Expression | 💖 Pink (`#E91E63`) | 💗 Deep Pink (`#F50057`) | 🌸 Light Pink (`#F8BBD0`) |
-| **Other** | Uncategorized | 🔵 Teal (`#4CA1AF`) | 💠 Cyan (`#00BCD4`) | 🧊 Pale Cyan (`#B2EBF2`) |
+| Node Type | Layer / Meaning | Standard | Vivid | Pastel | Linear |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Bronze** | Raw Ingestion | 🟤 Brown (`#8B4513`) | 🟠 Orange (`#FF5722`) | 🟤 Pale Brown (`#D7CCC8`) | 🟤 Muted (`#B08968`) |
+| **Silver** | Cleaned / Conformed | ⚪ Gray (`#708090`) | 🔵 Blue (`#29B6F6`) | ⚪ Blue Grey (`#CFD8DC`) | ⚪ Slate (`#8E99A4`) |
+| **Gold** | Business Aggregates | 🟡 Gold (`#DAA520`) | 🟡 Yellow (`#FFEB3B`) | 🟡 Pale Yellow (`#FFF9C4`) | 🟡 Warm (`#D4A843`) |
+| **External** | Missing / Ghost Node | 🟠 Dark Orange (`#D35400`) | 🟠 Neon Orange (`#FF9800`) | 🟠 Peach (`#FFE0B2`) | 🟠 Sand (`#CC8B5E`) |
+| **CTE** | Internal Common Table Expression | 💖 Pink (`#E91E63`) | 💗 Deep Pink (`#F50057`) | 🌸 Light Pink (`#F8BBD0`) | 💜 Mauve (`#C77092`) |
+| **Other** | Uncategorized | 🔵 Teal (`#4CA1AF`) | 💠 Cyan (`#00BCD4`) | 🧊 Pale Cyan (`#B2EBF2`) | 🔵 Ocean (`#6B9DAD`) |
 
 ---
 
@@ -121,7 +131,7 @@ Install easily via `pip`:
 pip install sql-dag-flow
 ```
 
-To update to the latest version (**v0.3.0**):
+To update to the latest version (**v0.4.0**):
 
 ```bash
 pip install --upgrade sql-dag-flow

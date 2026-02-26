@@ -1,175 +1,177 @@
-import React, { useMemo, useState } from 'react';
-import { BarChart3, ChevronDown, ChevronRight, AlertTriangle, CheckCircle, FolderTree, Database } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { X, BarChart3, Network, HeartPulse } from 'lucide-react';
 
 const LayerStats = ({ nodes, edges, theme, isOpen, onClose }) => {
-    const [expandedProjects, setExpandedProjects] = useState({});
-    const isDark = theme === 'dark';
-
-    const stats = useMemo(() => {
-        const realNodes = nodes.filter(n => n.type !== 'annotation');
-        const layers = { bronze: 0, silver: 0, gold: 0, other: 0, external: 0, cte: 0 };
-        const projectTree = {};
-
-        realNodes.forEach(n => {
-            const layer = n.data.layer || 'other';
-            layers[layer] = (layers[layer] || 0) + 1;
-            const project = n.data.details?.project || 'default';
-            const dataset = n.data.details?.dataset || 'default';
-            if (!projectTree[project]) projectTree[project] = {};
-            if (!projectTree[project][dataset]) projectTree[project][dataset] = [];
-            projectTree[project][dataset].push(n.data.label || n.id);
-        });
-
-        const targetsSet = new Set(edges.map(e => e.target));
-        const sourcesSet = new Set(edges.map(e => e.source));
-        const sourceNodes = realNodes.filter(n => !targetsSet.has(n.id));
-        const sinkNodes = realNodes.filter(n => !sourcesSet.has(n.id));
-        const orphanNodes = realNodes.filter(n => !targetsSet.has(n.id) && !sourcesSet.has(n.id));
-
-        const layerOrder = { bronze: 0, silver: 1, gold: 2 };
-        let violations = 0;
-        edges.forEach(e => {
-            const sourceNode = realNodes.find(n => n.id === e.source);
-            const targetNode = realNodes.find(n => n.id === e.target);
-            if (sourceNode && targetNode) {
-                const sO = layerOrder[sourceNode.data.layer];
-                const tO = layerOrder[targetNode.data.layer];
-                if (sO !== undefined && tO !== undefined && sO > tO) violations++;
-            }
-        });
-
-        return { total: realNodes.length, layers, edges: edges.length, sources: sourceNodes.length, sinks: sinkNodes.length, orphans: orphanNodes.length, violations, projectTree };
-    }, [nodes, edges]);
-
-    const layerColors = {
-        bronze: '#cd7f32', silver: '#708090', gold: '#FFD700',
-        other: '#4CA1AF', external: '#ff9f1c', cte: '#E91E63'
-    };
-
-    const toggleProject = (proj) => {
-        setExpandedProjects(prev => ({ ...prev, [proj]: !prev[proj] }));
-    };
-
     if (!isOpen) return null;
 
-    const total = stats.total || 1;
+    const isDark = theme === 'dark';
+
+    const layerColors = {
+        bronze: '#cd7f32',
+        silver: '#708090',
+        gold: '#FFD700',
+        external: '#ff9f1c',
+        cte: '#E91E63',
+        other: '#4CA1AF'
+    };
+
+    const stats = useMemo(() => {
+        const modelNodes = nodes.filter(n => n.type !== 'annotation');
+        const layerCounts = {};
+        modelNodes.forEach(node => {
+            const layer = node.data.layer || 'other';
+            layerCounts[layer] = (layerCounts[layer] || 0) + 1;
+        });
+
+        const projectTree = {};
+        modelNodes.forEach(node => {
+            const project = node.data.details?.project || 'default';
+            const dataset = node.data.details?.dataset || 'default';
+            if (!projectTree[project]) projectTree[project] = {};
+            if (!projectTree[project][dataset]) projectTree[project][dataset] = 0;
+            projectTree[project][dataset]++;
+        });
+
+        const totalNodes = modelNodes.length;
+        const totalEdges = edges.length;
+        const avgDeps = totalNodes > 0 ? (totalEdges / totalNodes).toFixed(1) : 0;
+
+        const hasOrphans = modelNodes.some(n => {
+            const hasIncoming = edges.some(e => e.target === n.id);
+            const hasOutgoing = edges.some(e => e.source === n.id);
+            return !hasIncoming && !hasOutgoing;
+        });
+        const orphanCount = modelNodes.filter(n => {
+            const hasIncoming = edges.some(e => e.target === n.id);
+            const hasOutgoing = edges.some(e => e.source === n.id);
+            return !hasIncoming && !hasOutgoing;
+        }).length;
+
+        const sourceCount = modelNodes.filter(n => !edges.some(e => e.target === n.id) && edges.some(e => e.source === n.id)).length;
+        const sinkCount = modelNodes.filter(n => edges.some(e => e.target === n.id) && !edges.some(e => e.source === n.id)).length;
+
+        return { layerCounts, projectTree, totalNodes, totalEdges, avgDeps, hasOrphans, orphanCount, sourceCount, sinkCount };
+    }, [nodes, edges]);
+
+    const maxCount = Math.max(1, ...Object.values(stats.layerCounts));
 
     return (
-        <>
-            {/* Backdrop */}
-            <div onClick={onClose} style={{
-                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                background: 'rgba(0,0,0,0.3)', zIndex: 999, backdropFilter: 'blur(2px)'
-            }} />
+        <div style={{
+            position: 'fixed',
+            top: 0, left: 0, width: '100vw', height: '100vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'var(--surface-overlay)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 2000,
+        }}
+            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+        >
             <div style={{
-                position: 'fixed',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                zIndex: 1000,
-                background: isDark ? 'rgba(30,30,30,0.97)' : 'rgba(255,255,255,0.97)',
-                backdropFilter: 'blur(12px)',
-                border: isDark ? '1px solid #444' : '1px solid #ddd',
-                borderRadius: '12px',
-                padding: '16px',
-                width: '320px',
-                maxHeight: '500px',
+                background: 'var(--surface-elevated)',
+                borderRadius: '16px',
+                width: '500px',
+                maxWidth: '90vw',
+                maxHeight: '80vh',
                 overflowY: 'auto',
-                boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
-                fontFamily: "'Inter', sans-serif",
-                color: isDark ? '#fff' : '#333'
+                padding: '24px',
+                border: '1px solid var(--border-default)',
+                boxShadow: 'var(--shadow-xl)',
+                animation: 'fadeIn 0.2s ease-out'
             }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700, letterSpacing: '0.5px', textTransform: 'uppercase', opacity: 0.7 }}>
-                        <BarChart3 size={14} /> Statistics
-                    </div>
-                    <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: isDark ? '#aaa' : '#666', display: 'flex', fontSize: '11px' }}>
-                        ✕
-                    </button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                    <h3 style={{ margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', fontWeight: 700, letterSpacing: '-0.02em' }}>
+                        <BarChart3 size={18} /> Project Statistics
+                    </h3>
+                    <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '4px', borderRadius: '4px' }}><X size={18} /></button>
                 </div>
 
-                {/* Layer Bars */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '12px' }}>
-                    {Object.entries(stats.layers).filter(([, count]) => count > 0).map(([layer, count]) => (
-                        <div key={layer} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '10px', fontWeight: 600, width: '50px', textTransform: 'capitalize', color: layerColors[layer] }}>{layer}</span>
-                            <div style={{ flex: 1, height: '6px', background: isDark ? '#333' : '#eee', borderRadius: '3px', overflow: 'hidden' }}>
-                                <div style={{ width: `${(count / total) * 100}%`, height: '100%', background: layerColors[layer], borderRadius: '3px', transition: 'width 0.3s ease' }} />
-                            </div>
-                            <span style={{ fontSize: '11px', fontWeight: 600, minWidth: '20px', textAlign: 'right' }}>{count}</span>
+                {/* Overview Cards */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '20px' }}>
+                    {[
+                        { label: 'Models', value: stats.totalNodes, icon: <Network size={14} /> },
+                        { label: 'Dependencies', value: stats.totalEdges, icon: <Network size={14} /> },
+                        { label: 'Avg Deps', value: stats.avgDeps, icon: <Network size={14} /> }
+                    ].map(card => (
+                        <div key={card.label} style={{ padding: '12px', background: 'var(--surface-primary)', borderRadius: '10px', border: '1px solid var(--border-default)' }}>
+                            <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>{card.label}</div>
+                            <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>{card.value}</div>
                         </div>
                     ))}
                 </div>
 
-                {/* Summary Stats */}
-                <div style={{ borderTop: isDark ? '1px solid #333' : '1px solid #eee', paddingTop: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '11px', marginBottom: '12px' }}>
-                    <div><span style={{ opacity: 0.6 }}>Edges:</span> <strong>{stats.edges}</strong></div>
-                    <div><span style={{ opacity: 0.6 }}>Sources:</span> <strong>{stats.sources}</strong></div>
-                    <div><span style={{ opacity: 0.6 }}>Sinks:</span> <strong>{stats.sinks}</strong></div>
-                    <div><span style={{ opacity: 0.6 }}>Orphans:</span> <strong>{stats.orphans}</strong></div>
+                {/* Layer Distribution */}
+                <div style={{ marginBottom: '20px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Layer Distribution</div>
+                    {Object.entries(stats.layerCounts).sort((a, b) => b[1] - a[1]).map(([layer, count]) => (
+                        <div key={layer} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                            <div style={{ width: '70px', fontSize: '11px', fontWeight: 500, color: 'var(--text-primary)', textTransform: 'capitalize' }}>{layer}</div>
+                            <div style={{ flex: 1, height: '6px', background: 'var(--interactive-active)', borderRadius: '3px', overflow: 'hidden' }}>
+                                <div style={{ width: `${(count / maxCount) * 100}%`, height: '100%', background: layerColors[layer] || '#888', borderRadius: '3px', transition: 'width 0.3s cubic-bezier(0.25, 0.1, 0.25, 1)' }} />
+                            </div>
+                            <div style={{ width: '30px', fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)', textAlign: 'right' }}>{count}</div>
+                        </div>
+                    ))}
                 </div>
 
-                {/* Project/Dataset Tree */}
-                <div style={{ borderTop: isDark ? '1px solid #333' : '1px solid #eee', paddingTop: '10px', marginBottom: '10px' }}>
-                    <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', opacity: 0.5, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <FolderTree size={12} /> Projects & Datasets
-                    </div>
-                    {Object.entries(stats.projectTree)
-                        .filter(([proj]) => proj !== 'internal')
-                        .sort(([a], [b]) => {
-                            if (a === 'default') return 1;
-                            if (b === 'default') return -1;
-                            return a.localeCompare(b);
-                        })
-                        .map(([project, datasets]) => {
-                            const nodeCount = Object.values(datasets).reduce((s, arr) => s + arr.length, 0);
-                            const isOpen = expandedProjects[project];
-                            return (
-                                <div key={project} style={{ marginBottom: '4px' }}>
-                                    <div
-                                        onClick={() => toggleProject(project)}
-                                        style={{
-                                            display: 'flex', alignItems: 'center', gap: '4px',
-                                            cursor: 'pointer', fontSize: '11px', fontWeight: 600,
-                                            padding: '3px 0', userSelect: 'none'
-                                        }}
-                                    >
-                                        {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                        <Database size={11} style={{ opacity: 0.6 }} />
-                                        <span style={{ flex: 1 }}>{project === 'default' ? 'Other' : project}</span>
-                                        <span style={{ fontSize: '10px', opacity: 0.5, background: isDark ? '#333' : '#eee', padding: '1px 6px', borderRadius: '8px' }}>{nodeCount}</span>
+                {/* Project & Dataset Tree */}
+                <div style={{ marginBottom: '20px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Project Structure</div>
+                    <div style={{ background: 'var(--surface-primary)', borderRadius: '10px', padding: '10px', border: '1px solid var(--border-default)' }}>
+                        {Object.entries(stats.projectTree).sort(([a], [b]) => a.localeCompare(b)).map(([project, datasets]) => (
+                            <div key={project} style={{ marginBottom: '8px' }}>
+                                <div style={{ fontWeight: 600, fontSize: '12px', color: 'var(--text-primary)', marginBottom: '4px' }}>📁 {project}</div>
+                                {Object.entries(datasets).sort(([a], [b]) => a.localeCompare(b)).map(([dataset, count]) => (
+                                    <div key={dataset} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0 3px 24px', fontSize: '11px' }}>
+                                        <span style={{ color: 'var(--text-secondary)' }}>📂 {dataset}</span>
+                                        <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{count}</span>
                                     </div>
-                                    {isOpen && Object.entries(datasets)
-                                        .sort(([a], [b]) => a.localeCompare(b))
-                                        .map(([dataset, nodeNames]) => (
-                                            <div key={dataset} style={{ marginLeft: '20px', fontSize: '10px', padding: '2px 0', display: 'flex', alignItems: 'center', gap: '4px', opacity: 0.8 }}>
-                                                <span style={{ color: isDark ? '#888' : '#999' }}>└</span>
-                                                <span style={{ fontWeight: 500 }}>{dataset === 'default' ? 'uncategorized' : dataset}</span>
-                                                <span style={{ opacity: 0.5 }}>({nodeNames.length})</span>
-                                            </div>
-                                        ))
-                                    }
-                                </div>
-                            );
-                        })
-                    }
+                                ))}
+                            </div>
+                        ))}
+                    </div>
                 </div>
 
                 {/* Architecture Health */}
-                <div style={{
-                    padding: '8px', borderRadius: '6px',
-                    background: stats.violations === 0 ? 'rgba(46, 204, 113, 0.1)' : 'rgba(255, 68, 68, 0.1)',
-                    border: `1px solid ${stats.violations === 0 ? 'rgba(46, 204, 113, 0.3)' : 'rgba(255, 68, 68, 0.3)'}`,
-                    display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px'
-                }}>
-                    {stats.violations === 0 ? (
-                        <><CheckCircle size={14} color="#2ecc71" /><span style={{ color: '#2ecc71', fontWeight: 600 }}>Clean Architecture</span></>
-                    ) : (
-                        <><AlertTriangle size={14} color="#ff4444" /><span style={{ color: '#ff4444', fontWeight: 600 }}>{stats.violations} layer violation{stats.violations > 1 ? 's' : ''}</span></>
-                    )}
+                <div>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <HeartPulse size={12} /> Architecture Health
+                    </div>
+                    <div style={{
+                        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px'
+                    }}>
+                        {[
+                            { label: 'Sources (No Deps)', value: stats.sourceCount, status: 'info' },
+                            { label: 'Sinks (No Consumers)', value: stats.sinkCount, status: 'info' },
+                            { label: 'Orphaned Nodes', value: stats.orphanCount, status: stats.orphanCount > 0 ? 'warning' : 'success' },
+                            { label: 'Avg Dependencies', value: stats.avgDeps, status: stats.avgDeps > 5 ? 'warning' : 'success' },
+                        ].map(item => {
+                            const statusColors = {
+                                success: 'var(--status-success)',
+                                warning: 'var(--status-warning)',
+                                error: 'var(--status-error)',
+                                info: 'var(--status-info)'
+                            };
+                            return (
+                                <div key={item.label} style={{
+                                    padding: '10px', borderRadius: '10px',
+                                    background: 'var(--surface-primary)',
+                                    border: '1px solid var(--border-default)',
+                                    display: 'flex', alignItems: 'center', gap: '8px'
+                                }}>
+                                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: statusColors[item.status] }} />
+                                    <div>
+                                        <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 500 }}>{item.label}</div>
+                                        <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>{item.value}</div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             </div>
-        </>
+        </div>
     );
 };
 

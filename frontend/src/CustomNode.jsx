@@ -15,8 +15,8 @@ const CustomNode = ({ id, data }) => {
             case 'silver': return '#A0A0A0';
             case 'gold': return '#FFD700';
             case 'external': return '#ff9f1c';
-            case 'cte': return '#E91E63'; // Pink for CTEs
-            case 'other': return '#4CA1AF'; // Teal for Other
+            case 'cte': return '#E91E63';
+            case 'other': return '#4CA1AF';
             default: return '#4CA1AF';
         }
     };
@@ -27,7 +27,8 @@ const CustomNode = ({ id, data }) => {
         const colors = {
             standard: { bronze: '#8B4513', silver: '#708090', gold: '#DAA520', external: '#D35400', cte: '#E91E63', other: '#4CA1AF', default: '#2F4F4F' },
             vivid: { bronze: '#FF5722', silver: '#29B6F6', gold: '#FFEB3B', external: '#FF9800', cte: '#F50057', other: '#00BCD4', default: '#9C27B0' },
-            pastel: { bronze: '#D7CCC8', silver: '#CFD8DC', gold: '#FFF9C4', external: '#FFE0B2', cte: '#F8BBD0', other: '#B2EBF2', default: '#E1BEE7' }
+            pastel: { bronze: '#D7CCC8', silver: '#CFD8DC', gold: '#FFF9C4', external: '#FFE0B2', cte: '#F8BBD0', other: '#B2EBF2', default: '#E1BEE7' },
+            linear: { bronze: '#B08968', silver: '#8E99A4', gold: '#D4A843', external: '#CC8B5E', cte: '#C77092', other: '#6B9DAD', default: '#7A8B8B' }
         };
 
         const selectedPalette = colors[palette] || colors.standard;
@@ -43,14 +44,14 @@ const CustomNode = ({ id, data }) => {
         }
     };
 
-    const color = getGradient(layer); // Returns solid color from palette
+    const color = getGradient(layer);
 
     // Determine Text Color: Dark for Pastel+Full, White otherwise (unless minimal)
     let textColor = 'white';
     if (styleMode === 'full' && data.palette === 'pastel') {
         textColor = '#333';
     } else if (styleMode === 'border') {
-        textColor = theme === 'dark' ? '#e0e0e0' : '#333';
+        textColor = 'var(--text-primary)';
     }
 
     const { project = '', dataset = '' } = details || {};
@@ -72,18 +73,15 @@ const CustomNode = ({ id, data }) => {
     // Dynamic Styles
     const containerStyle = styleMode === 'full' ? {
         background: color,
-        border: isView ? '1px dashed rgba(255,255,255,0.3)' : '1px solid rgba(255,255,255,0.1)',
+        border: isView ? '1px dashed rgba(255,255,255,0.3)' : '1px solid rgba(255,255,255,0.08)',
         color: textColor
     } : {
-        background: isDark ? '#1e1e1e' : '#ffffff',
+        background: 'var(--surface-elevated)',
         border: isView ? `2px dashed ${color}` : `2px solid ${color}`,
         color: textColor
     };
 
     const iconColor = styleMode === 'full' ? textColor : color;
-
-    // Debugging
-    // console.log('Node', label, 'showCounts:', data.showCounts);
 
     return (
         <div
@@ -94,35 +92,37 @@ const CustomNode = ({ id, data }) => {
             style={{
                 ...containerStyle,
                 padding: '12px 20px',
-                borderRadius: isView ? '20px' : '12px',
+                borderRadius: isView ? '20px' : '10px',
                 minWidth: '220px',
-                boxShadow: isDark ? '0 4px 15px rgba(0,0,0,0.3)' : '0 4px 15px rgba(0,0,0,0.1)',
+                boxShadow: 'var(--shadow-md)',
                 fontFamily: "'Inter', sans-serif",
                 position: 'relative',
-                cursor: 'context-menu'
+                cursor: 'context-menu',
+                transition: 'box-shadow 0.2s ease, transform 0.15s ease'
             }}>
-            <Handle type="target" position={Position.Left} style={{ background: isDark ? '#fff' : '#555' }} />
+            <Handle type="target" position={Position.Left} style={{ background: 'var(--text-secondary)', width: 8, height: 8, border: '2px solid var(--surface-primary)' }} />
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                 {getIcon(layer, iconColor)}
                 <div style={{
                     fontSize: '9px',
                     textTransform: 'uppercase',
-                    letterSpacing: '1px',
-                    opacity: 0.8,
+                    letterSpacing: '0.08em',
+                    opacity: 0.7,
+                    fontWeight: 600,
                     color: styleMode === 'border' ? color : 'inherit'
                 }}>
                     {layer.toUpperCase()} {isView ? '(VIEW)' : ''}
                 </div>
             </div>
 
-            <div style={{ fontSize: '14px', fontWeight: '600', textShadow: (styleMode === 'full' && data.palette !== 'pastel') ? '0 1px 2px rgba(0,0,0,0.2)' : 'none', marginBottom: '4px' }}>
+            <div style={{ fontSize: '14px', fontWeight: '600', textShadow: (styleMode === 'full' && data.palette !== 'pastel') ? '0 1px 2px rgba(0,0,0,0.2)' : 'none', marginBottom: '4px', letterSpacing: '-0.01em' }}>
                 {label}
             </div>
 
             {/* Project & Dataset Metadata */}
             {(details?.project !== 'default' || details?.dataset !== 'default') && (
-                <div style={{ fontSize: '10px', opacity: 0.7, marginBottom: '6px', fontStyle: 'italic' }}>
+                <div style={{ fontSize: '10px', opacity: 0.6, marginBottom: '6px', fontStyle: 'italic' }}>
                     {details?.project !== 'default' ? `${details?.project}.` : ''}{details?.dataset !== 'default' ? details?.dataset : ''}
                 </div>
             )}
@@ -130,12 +130,12 @@ const CustomNode = ({ id, data }) => {
             {/* Dependency Count / Source Label */}
             {data.showCounts !== false && (
                 data.incomingCount > 0 ? (
-                    <div style={{ fontSize: '9px', marginTop: '4px', opacity: 0.7, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <div style={{ fontSize: '9px', marginTop: '4px', opacity: 0.6, display: 'flex', flexDirection: 'column', gap: '2px' }}>
                         <span>Direct: {data.incomingCount}</span>
                         <span>Nested: {data.nestedCount !== undefined ? data.nestedCount : '-'}</span>
                     </div>
                 ) : (
-                    <div style={{ fontSize: '9px', marginTop: '4px', opacity: 0.6 }}>Source</div>
+                    <div style={{ fontSize: '9px', marginTop: '4px', opacity: 0.5 }}>Source</div>
                 )
             )}
 
@@ -147,10 +147,10 @@ const CustomNode = ({ id, data }) => {
                         position: 'absolute',
                         top: '-8px',
                         right: '-8px',
-                        background: details.complexity.score <= 3 ? '#2ecc71'
-                            : details.complexity.score <= 7 ? '#f39c12'
+                        background: details.complexity.score <= 3 ? 'var(--status-success)'
+                            : details.complexity.score <= 7 ? 'var(--status-warning)'
                                 : details.complexity.score <= 12 ? '#e67e22'
-                                    : '#e74c3c',
+                                    : 'var(--status-error)',
                         color: '#fff',
                         fontSize: '9px',
                         fontWeight: 700,
@@ -160,8 +160,8 @@ const CustomNode = ({ id, data }) => {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
-                        border: '2px solid ' + (isDark ? '#1e1e1e' : '#fff'),
+                        boxShadow: 'var(--shadow-md)',
+                        border: '2px solid var(--surface-primary)',
                         zIndex: 2
                     }}
                 >
@@ -186,12 +186,12 @@ const CustomNode = ({ id, data }) => {
                     zIndex: 100,
                 }} className="node-toolbar">
                     <div style={{
-                        background: isDark ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-                        backdropFilter: 'blur(8px)',
+                        background: 'var(--surface-tooltip)',
+                        backdropFilter: 'blur(16px)',
                         padding: '6px',
-                        borderRadius: '8px',
-                        boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.4)' : '0 8px 32px rgba(0,0,0,0.15)',
-                        border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.05)',
+                        borderRadius: '10px',
+                        boxShadow: 'var(--shadow-lg)',
+                        border: '1px solid var(--border-default)',
                         display: 'flex',
                         gap: '4px',
                         minWidth: 'max-content'
@@ -210,7 +210,7 @@ const CustomNode = ({ id, data }) => {
                             onClick={() => data.onAction('hideTree', data.id)}
                             isDark={isDark}
                         />
-                        <div style={{ width: '1px', background: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)', margin: '0 2px' }} />
+                        <div style={{ width: '1px', background: 'var(--border-emphasis)', margin: '0 2px' }} />
 
                         {/* Show Only Tree (Focus) */}
                         <ToolbarButton
@@ -239,7 +239,7 @@ const CustomNode = ({ id, data }) => {
                 `}
             </style>
 
-            <Handle type="source" position={Position.Right} style={{ background: isDark ? '#fff' : '#555' }} />
+            <Handle type="source" position={Position.Right} style={{ background: 'var(--text-secondary)', width: 8, height: 8, border: '2px solid var(--surface-primary)' }} />
         </div>
     );
 };
@@ -252,15 +252,15 @@ const ToolbarButton = ({ icon, label, onClick, isDark }) => (
             background: 'transparent',
             border: 'none',
             cursor: 'pointer',
-            color: isDark ? '#eee' : '#333',
+            color: 'var(--text-primary)',
             padding: '6px',
-            borderRadius: '4px',
+            borderRadius: '6px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            transition: 'background 0.2s'
+            transition: 'background 0.15s ease'
         }}
-        onMouseEnter={(e) => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}
+        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--interactive-hover)'}
         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
     >
         {icon}

@@ -10,7 +10,6 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
         external: true,
         cte: true
     });
-    const isDark = theme === 'dark';
 
     // Shared filtering function
     const filterNode = (n, searchLower) => {
@@ -90,9 +89,6 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
         setExpandedGroups(prev => ({ ...prev, [group]: !prev[group] }));
     };
 
-    const textColor = isDark ? '#fff' : '#000';
-    const hoverBg = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
-
     const layerColors = {
         bronze: '#cd7f32', silver: '#708090', gold: '#FFD700',
         other: '#4CA1AF', external: '#ff9f1c', cte: '#E91E63'
@@ -110,8 +106,10 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         cursor: 'pointer',
-                        transition: 'background 0.2s',
+                        transition: 'background 0.15s cubic-bezier(0.25, 0.1, 0.25, 1)',
                         opacity: isHidden ? 0.5 : 1,
+                        borderRadius: '4px',
+                        margin: '0 8px',
                     }}
                     className="sidebar-item"
                     onClick={() => onNodeClick && onNodeClick(node)}
@@ -124,7 +122,7 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
                         }} />
                         <span
                             style={{
-                                color: textColor,
+                                color: 'var(--text-primary)',
                                 fontSize: '12px',
                                 whiteSpace: 'nowrap',
                                 overflow: 'hidden',
@@ -138,10 +136,10 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
                         {node.data.incomingCount > 0 && (
                             <span style={{
                                 fontSize: '10px',
-                                background: isDark ? '#333' : '#eee',
+                                background: 'var(--interactive-active)',
                                 padding: '1px 5px',
                                 borderRadius: '10px',
-                                color: isDark ? '#aaa' : '#666'
+                                color: 'var(--text-secondary)'
                             }}>
                                 {node.data.incomingCount}
                             </span>
@@ -151,8 +149,10 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
                         onClick={(e) => { e.stopPropagation(); toggleNodeVisibility(node.id); }}
                         style={{
                             background: 'transparent', border: 'none', cursor: 'pointer',
-                            color: isHidden ? (isDark ? '#666' : '#ccc') : (isDark ? '#fff' : '#000'),
-                            display: 'flex', alignItems: 'center', padding: '4px'
+                            color: isHidden ? 'var(--text-tertiary)' : 'var(--text-secondary)',
+                            display: 'flex', alignItems: 'center', padding: '4px',
+                            borderRadius: '4px',
+                            transition: 'color 0.15s ease'
                         }}
                         title={isHidden ? "Show Node" : "Hide Node"}
                     >
@@ -165,10 +165,10 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
                     if (!snippet) return null;
                     return (
                         <div style={{
-                            padding: '2px 20px 4px 38px',
+                            padding: '2px 20px 4px 46px',
                             fontSize: '10px',
                             fontFamily: 'monospace',
-                            color: isDark ? '#7ca8d8' : '#2563eb',
+                            color: 'var(--accent-text)',
                             opacity: 0.8,
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
@@ -192,9 +192,9 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
                     style={{
                         padding: '10px 20px',
                         display: 'flex', alignItems: 'center',
-                        cursor: 'pointer', fontSize: '12px', fontWeight: 'bold',
-                        color: isDark ? '#aaa' : '#666',
-                        textTransform: 'uppercase', letterSpacing: '0.5px', userSelect: 'none'
+                        cursor: 'pointer', fontSize: '11px', fontWeight: '600',
+                        color: 'var(--text-tertiary)',
+                        textTransform: 'uppercase', letterSpacing: '0.05em', userSelect: 'none'
                     }}
                     onClick={() => toggleGroup(key)}
                 >
@@ -226,9 +226,9 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
                         style={{
                             padding: '8px 20px',
                             display: 'flex', alignItems: 'center',
-                            cursor: 'pointer', fontSize: '12px', fontWeight: 'bold',
-                            color: isDark ? '#aaa' : '#666',
-                            textTransform: 'uppercase', letterSpacing: '0.5px', userSelect: 'none'
+                            cursor: 'pointer', fontSize: '11px', fontWeight: '600',
+                            color: 'var(--text-tertiary)',
+                            textTransform: 'uppercase', letterSpacing: '0.05em', userSelect: 'none'
                         }}
                         onClick={() => toggleGroup(projectKey)}
                     >
@@ -237,7 +237,7 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
                         <span style={{ marginLeft: 6 }}>
                             {project === 'default' || project === 'internal' ? 'Other' : project}
                         </span>
-                        <span style={{ marginLeft: 'auto', fontSize: '10px', opacity: 0.6, background: isDark ? '#333' : '#eee', padding: '1px 6px', borderRadius: '8px' }}>
+                        <span style={{ marginLeft: 'auto', fontSize: '10px', background: 'var(--interactive-active)', padding: '1px 6px', borderRadius: '8px', color: 'var(--text-secondary)' }}>
                             {nodeCount}
                         </span>
                     </div>
@@ -252,14 +252,14 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
                                         style={{
                                             padding: '6px 20px 6px 40px',
                                             display: 'flex', alignItems: 'center',
-                                            cursor: 'pointer', fontSize: '11px', fontWeight: 600,
-                                            color: isDark ? '#999' : '#777', userSelect: 'none'
+                                            cursor: 'pointer', fontSize: '11px', fontWeight: 500,
+                                            color: 'var(--text-secondary)', userSelect: 'none'
                                         }}
                                         onClick={() => toggleGroup(dsKey)}
                                     >
                                         {dsOpen ? <ChevronDown size={12} style={{ marginRight: 4 }} /> : <ChevronRight size={12} style={{ marginRight: 4 }} />}
                                         <span>{dataset === 'default' ? 'uncategorized' : dataset}</span>
-                                        <span style={{ marginLeft: 'auto', fontSize: '10px', opacity: 0.5 }}>({datasetNodes.length})</span>
+                                        <span style={{ marginLeft: 'auto', fontSize: '10px', color: 'var(--text-tertiary)' }}>({datasetNodes.length})</span>
                                     </div>
                                     {dsOpen && datasetNodes.map(renderNodeItem)}
                                 </div>
@@ -273,40 +273,43 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
 
     return (
         <div style={{
-            position: 'absolute', top: 0, left: 0, width: '300px', height: '100%',
-            background: isDark ? '#1a1a1a' : '#ffffff',
-            borderRight: isDark ? '1px solid #333' : '1px solid #ddd',
+            position: 'absolute', top: 0, left: 0, width: '280px', height: '100%',
+            background: 'var(--surface-secondary)',
+            borderRight: '1px solid var(--border-default)',
             zIndex: 1000, display: 'flex', flexDirection: 'column',
-            boxShadow: '5px 0 15px rgba(0,0,0,0.1)', transition: 'transform 0.3s ease'
+            boxShadow: 'var(--shadow-lg)', transition: 'transform 0.25s cubic-bezier(0.25, 0.1, 0.25, 1)'
         }}>
             {/* Header */}
             <div style={{
-                padding: '16px 20px', borderBottom: isDark ? '1px solid #333' : '1px solid #eee',
+                padding: '14px 20px', borderBottom: '1px solid var(--border-default)',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center'
             }}>
-                <h3 style={{ margin: 0, color: textColor, fontSize: '15px' }}>
+                <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '14px', fontWeight: 600, letterSpacing: '-0.01em' }}>
                     Nodes ({nodes.filter(n => n.type !== 'annotation').length})
                 </h3>
-                <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: textColor, cursor: 'pointer' }}>
-                    <X size={20} />
+                <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '4px', borderRadius: '4px' }}>
+                    <X size={18} />
                 </button>
             </div>
 
             {/* Search + Group Mode Toggle */}
-            <div style={{ padding: '10px 20px', borderBottom: isDark ? '1px solid #333' : '1px solid #eee' }}>
+            <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-default)' }}>
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
-                    <Search size={14} style={{ position: 'absolute', left: 10, color: isDark ? '#888' : '#aaa' }} />
+                    <Search size={14} style={{ position: 'absolute', left: 10, color: 'var(--text-tertiary)' }} />
                     <input
                         type="text"
                         placeholder="Search nodes, projects, datasets..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         style={{
-                            width: '100%', padding: '8px 12px 8px 32px', borderRadius: '6px',
-                            border: isDark ? '1px solid #444' : '1px solid #ddd',
-                            background: isDark ? '#2a2a2a' : '#f5f5f5',
-                            color: isDark ? '#fff' : '#000', outline: 'none', fontSize: '12px'
+                            width: '100%', padding: '8px 12px 8px 32px', borderRadius: '8px',
+                            border: '1px solid var(--border-default)',
+                            background: 'var(--surface-primary)',
+                            color: 'var(--text-primary)', outline: 'none', fontSize: '12px',
+                            transition: 'border-color 0.15s ease'
                         }}
+                        onFocus={(e) => e.target.style.borderColor = 'var(--accent-primary)'}
+                        onBlur={(e) => e.target.style.borderColor = 'var(--border-default)'}
                     />
                 </div>
                 {/* SQL Content Search Toggle */}
@@ -316,28 +319,29 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
                         style={{
                             display: 'flex', alignItems: 'center', gap: '4px',
                             padding: '4px 8px', fontSize: '10px', fontWeight: 600,
-                            border: 'none', borderRadius: '4px', cursor: 'pointer',
-                            background: searchInSQL ? (isDark ? '#1a4a7a' : '#dbeafe') : (isDark ? '#2a2a2a' : '#eee'),
-                            color: searchInSQL ? (isDark ? '#7ca8d8' : '#2563eb') : textColor,
-                            transition: 'all 0.2s'
+                            border: 'none', borderRadius: '6px', cursor: 'pointer',
+                            background: searchInSQL ? 'var(--accent-muted)' : 'var(--interactive-hover)',
+                            color: searchInSQL ? 'var(--accent-text)' : 'var(--text-secondary)',
+                            transition: 'all 0.15s ease'
                         }}
                     >
                         <Code size={12} /> Search in SQL
                     </button>
                     {searchInSQL && (
-                        <span style={{ fontSize: '9px', opacity: 0.5, color: textColor }}>Matches SQL file content</span>
+                        <span style={{ fontSize: '9px', color: 'var(--text-tertiary)' }}>Matches SQL file content</span>
                     )}
                 </div>
                 {/* Group Mode Toggle */}
-                <div style={{ display: 'flex', background: isDark ? '#2a2a2a' : '#eee', borderRadius: '6px', padding: '2px' }}>
+                <div style={{ display: 'flex', background: 'var(--interactive-hover)', borderRadius: '8px', padding: '2px' }}>
                     <button
                         onClick={() => setGroupMode('layer')}
                         style={{
-                            flex: 1, padding: '4px 8px', fontSize: '10px', fontWeight: 600,
-                            border: 'none', borderRadius: '4px', cursor: 'pointer',
-                            background: groupMode === 'layer' ? (isDark ? '#555' : '#fff') : 'transparent',
-                            color: textColor, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
-                            boxShadow: groupMode === 'layer' ? '0 1px 3px rgba(0,0,0,0.15)' : 'none'
+                            flex: 1, padding: '5px 8px', fontSize: '10px', fontWeight: 600,
+                            border: 'none', borderRadius: '6px', cursor: 'pointer',
+                            background: groupMode === 'layer' ? 'var(--surface-elevated)' : 'transparent',
+                            color: 'var(--text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                            boxShadow: groupMode === 'layer' ? 'var(--shadow-sm)' : 'none',
+                            transition: 'all 0.15s cubic-bezier(0.25, 0.1, 0.25, 1)'
                         }}
                     >
                         <Layers size={12} /> By Layer
@@ -345,11 +349,12 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
                     <button
                         onClick={() => setGroupMode('project')}
                         style={{
-                            flex: 1, padding: '4px 8px', fontSize: '10px', fontWeight: 600,
-                            border: 'none', borderRadius: '4px', cursor: 'pointer',
-                            background: groupMode === 'project' ? (isDark ? '#555' : '#fff') : 'transparent',
-                            color: textColor, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
-                            boxShadow: groupMode === 'project' ? '0 1px 3px rgba(0,0,0,0.15)' : 'none'
+                            flex: 1, padding: '5px 8px', fontSize: '10px', fontWeight: 600,
+                            border: 'none', borderRadius: '6px', cursor: 'pointer',
+                            background: groupMode === 'project' ? 'var(--surface-elevated)' : 'transparent',
+                            color: 'var(--text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                            boxShadow: groupMode === 'project' ? 'var(--shadow-sm)' : 'none',
+                            transition: 'all 0.15s cubic-bezier(0.25, 0.1, 0.25, 1)'
                         }}
                     >
                         <FolderTree size={12} /> By Project
@@ -371,16 +376,26 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
             </div>
 
             {/* Footer */}
-            <div style={{ padding: '12px 20px', borderTop: isDark ? '1px solid #333' : '1px solid #eee', display: 'flex', gap: '10px' }}>
+            <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-default)', display: 'flex', gap: '8px' }}>
                 <button
                     onClick={() => nodes.forEach(n => !hiddenNodeIds.includes(n.id) && toggleNodeVisibility(n.id))}
-                    style={{ flex: 1, padding: '6px', fontSize: '11px', cursor: 'pointer', background: isDark ? '#333' : '#eee', border: 'none', borderRadius: '4px', color: textColor }}
+                    style={{
+                        flex: 1, padding: '6px', fontSize: '11px', cursor: 'pointer',
+                        background: 'var(--interactive-hover)', border: 'none', borderRadius: '6px',
+                        color: 'var(--text-secondary)', fontWeight: 500,
+                        transition: 'background 0.15s ease'
+                    }}
                 >
                     Hide All
                 </button>
                 <button
                     onClick={() => nodes.forEach(n => hiddenNodeIds.includes(n.id) && toggleNodeVisibility(n.id))}
-                    style={{ flex: 1, padding: '6px', fontSize: '11px', cursor: 'pointer', background: isDark ? '#333' : '#eee', border: 'none', borderRadius: '4px', color: textColor }}
+                    style={{
+                        flex: 1, padding: '6px', fontSize: '11px', cursor: 'pointer',
+                        background: 'var(--interactive-hover)', border: 'none', borderRadius: '6px',
+                        color: 'var(--text-secondary)', fontWeight: 500,
+                        transition: 'background 0.15s ease'
+                    }}
                 >
                     Show All
                 </button>

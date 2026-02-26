@@ -1,187 +1,117 @@
-import React, { useState } from 'react';
-import { AlignCenterHorizontal, AlignCenterVertical, AlignHorizontalSpaceAround, AlignVerticalSpaceAround, Minimize2, X, FolderInput } from 'lucide-react';
+import React from 'react';
+import { AlignStartVertical, AlignStartHorizontal, AlignEndVertical, AlignEndHorizontal, AlignCenterVertical, AlignCenterHorizontal, Rows, Columns, ArrowDownToLine, ArrowRightToLine, X } from 'lucide-react';
 
 const SelectionToolbar = ({ selectedCount, onAlign, onClearSelection, onBatchLayerChange, theme }) => {
-    const [showLayerPicker, setShowLayerPicker] = useState(false);
     if (selectedCount < 2) return null;
-
-    const isDark = theme === 'dark';
-    const bgColor = isDark ? '#333' : '#fff';
-    const textColor = isDark ? '#fff' : '#333';
-    const borderColor = isDark ? '#555' : '#ccc';
 
     const buttonStyle = {
         background: 'transparent',
         border: 'none',
+        color: 'var(--text-primary)',
         cursor: 'pointer',
-        padding: '6px 8px',
+        padding: '6px',
         borderRadius: '6px',
         display: 'flex',
         alignItems: 'center',
-        gap: '4px',
-        color: textColor,
-        fontSize: '10px',
-        fontWeight: 500,
-        transition: 'background 0.2s',
-        whiteSpace: 'nowrap',
+        justifyContent: 'center',
+        transition: 'background 0.15s ease'
     };
 
-    const ToolButton = ({ icon, label, action }) => (
-        <button
-            onClick={() => onAlign(action)}
-            title={label}
-            style={buttonStyle}
-            onMouseEnter={(e) => e.currentTarget.style.background = isDark ? '#444' : '#eee'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-        >
-            {icon}
-            <span>{label}</span>
-        </button>
-    );
+    const handleHover = (e) => e.currentTarget.style.background = 'var(--interactive-hover)';
+    const handleLeave = (e) => e.currentTarget.style.background = 'transparent';
 
     return (
         <div style={{
             position: 'absolute',
-            bottom: '80px',
+            top: '70px',
             left: '50%',
             transform: 'translateX(-50%)',
-            background: bgColor,
+            zIndex: 999,
+            background: 'var(--surface-tooltip)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid var(--border-default)',
+            borderRadius: '14px',
             padding: '8px 12px',
-            borderRadius: '10px',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.25)',
-            border: `1px solid ${borderColor}`,
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
-            zIndex: 50,
-            fontFamily: "'Inter', sans-serif",
-            animation: 'fadeIn 0.2s ease-out',
-            backdropFilter: 'blur(10px)',
+            boxShadow: 'var(--shadow-lg)',
+            animation: 'fadeIn 0.2s ease-out'
         }}>
-            <div style={{ fontWeight: 600, fontSize: '13px', color: textColor, padding: '0 4px' }}>
-                {selectedCount} Selected
-            </div>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginRight: '8px' }}>
+                {selectedCount} selected
+            </span>
+            <div style={{ width: 1, height: 20, background: 'var(--border-emphasis)' }} />
 
-            <div style={{ width: '1px', height: '24px', background: borderColor }} />
+            {/* Alignment buttons */}
+            <button onClick={() => onAlign('left')} title="Align Left" style={buttonStyle} onMouseEnter={handleHover} onMouseLeave={handleLeave}>
+                <AlignStartVertical size={16} />
+            </button>
+            <button onClick={() => onAlign('centerH')} title="Center Horizontal" style={buttonStyle} onMouseEnter={handleHover} onMouseLeave={handleLeave}>
+                <AlignCenterVertical size={16} />
+            </button>
+            <button onClick={() => onAlign('right')} title="Align Right" style={buttonStyle} onMouseEnter={handleHover} onMouseLeave={handleLeave}>
+                <AlignEndVertical size={16} />
+            </button>
+            <button onClick={() => onAlign('top')} title="Align Top" style={buttonStyle} onMouseEnter={handleHover} onMouseLeave={handleLeave}>
+                <AlignStartHorizontal size={16} />
+            </button>
+            <button onClick={() => onAlign('centerV')} title="Center Vertical" style={buttonStyle} onMouseEnter={handleHover} onMouseLeave={handleLeave}>
+                <AlignCenterHorizontal size={16} />
+            </button>
+            <button onClick={() => onAlign('bottom')} title="Align Bottom" style={buttonStyle} onMouseEnter={handleHover} onMouseLeave={handleLeave}>
+                <AlignEndHorizontal size={16} />
+            </button>
 
-            {/* Align Section */}
-            <div style={{ display: 'flex', gap: '2px' }}>
-                <ToolButton
-                    icon={<AlignCenterHorizontal size={16} />}
-                    label="Align H"
-                    action="horizontal"
-                />
-                <ToolButton
-                    icon={<AlignCenterVertical size={16} />}
-                    label="Align V"
-                    action="vertical"
-                />
-            </div>
+            <div style={{ width: 1, height: 20, background: 'var(--border-emphasis)' }} />
 
-            <div style={{ width: '1px', height: '24px', background: borderColor }} />
-
-            {/* Distribute Section */}
-            <div style={{ display: 'flex', gap: '2px' }}>
-                <ToolButton
-                    icon={<AlignHorizontalSpaceAround size={16} />}
-                    label="Distribute H"
-                    action="distributeH"
-                />
-                <ToolButton
-                    icon={<AlignVerticalSpaceAround size={16} />}
-                    label="Distribute V"
-                    action="distributeV"
-                />
-            </div>
-
-            <div style={{ width: '1px', height: '24px', background: borderColor }} />
+            {/* Distribution */}
+            <button onClick={() => onAlign('distributeH')} title="Distribute Horizontal" style={buttonStyle} onMouseEnter={handleHover} onMouseLeave={handleLeave}>
+                <Rows size={16} />
+            </button>
+            <button onClick={() => onAlign('distributeV')} title="Distribute Vertical" style={buttonStyle} onMouseEnter={handleHover} onMouseLeave={handleLeave}>
+                <Columns size={16} />
+            </button>
 
             {/* Compact */}
-            <ToolButton
-                icon={<Minimize2 size={16} />}
-                label="Compact"
-                action="compact"
-            />
+            <button onClick={() => onAlign('compactH')} title="Compact Horizontal" style={buttonStyle} onMouseEnter={handleHover} onMouseLeave={handleLeave}>
+                <ArrowDownToLine size={16} />
+            </button>
+            <button onClick={() => onAlign('compactV')} title="Compact Vertical" style={buttonStyle} onMouseEnter={handleHover} onMouseLeave={handleLeave}>
+                <ArrowRightToLine size={16} />
+            </button>
 
-            <div style={{ width: '1px', height: '24px', background: borderColor }} />
+            <div style={{ width: 1, height: 20, background: 'var(--border-emphasis)' }} />
 
-            {/* Batch Layer Assignment */}
+            {/* Batch Layer Change */}
             {onBatchLayerChange && (
-                <div style={{ position: 'relative' }}>
-                    <button
-                        onClick={() => setShowLayerPicker(!showLayerPicker)}
-                        title="Move to Layer"
-                        style={{
-                            ...buttonStyle,
-                            background: showLayerPicker ? (isDark ? '#444' : '#eee') : 'transparent'
-                        }}
-                        onMouseEnter={(e) => { if (!showLayerPicker) e.currentTarget.style.background = isDark ? '#444' : '#eee'; }}
-                        onMouseLeave={(e) => { if (!showLayerPicker) e.currentTarget.style.background = 'transparent'; }}
-                    >
-                        <FolderInput size={16} />
-                        <span>Move</span>
-                    </button>
-                    {showLayerPicker && (
-                        <div style={{
-                            position: 'absolute',
-                            bottom: '130%',
-                            left: '50%',
-                            transform: 'translateX(-50%)',
-                            background: isDark ? '#2a2a2a' : '#fff',
-                            border: `1px solid ${borderColor}`,
-                            borderRadius: '8px',
-                            padding: '6px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '2px',
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-                            minWidth: '100px',
-                            zIndex: 100
-                        }}>
-                            {[
-                                { key: 'bronze', color: '#cd7f32' },
-                                { key: 'silver', color: '#708090' },
-                                { key: 'gold', color: '#FFD700' },
-                            ].map(layer => (
-                                <button
-                                    key={layer.key}
-                                    onClick={() => { onBatchLayerChange(layer.key); setShowLayerPicker(false); }}
-                                    style={{
-                                        background: 'transparent',
-                                        border: 'none',
-                                        padding: '6px 10px',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer',
-                                        color: textColor,
-                                        fontSize: '12px',
-                                        fontWeight: 500,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        textAlign: 'left',
-                                        transition: 'background 0.2s'
-                                    }}
-                                    onMouseEnter={(e) => e.currentTarget.style.background = isDark ? '#444' : '#eee'}
-                                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                                >
-                                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: layer.color }} />
-                                    {layer.key.charAt(0).toUpperCase() + layer.key.slice(1)}
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </div>
+                <>
+                    {['bronze', 'silver', 'gold'].map((layer) => {
+                        const colors = { bronze: '#cd7f32', silver: '#708090', gold: '#FFD700' };
+                        return (
+                            <button
+                                key={layer}
+                                onClick={() => onBatchLayerChange(layer)}
+                                title={`Set to ${layer}`}
+                                style={{
+                                    ...buttonStyle,
+                                    width: 22, height: 22,
+                                    background: colors[layer],
+                                    borderRadius: '6px',
+                                    color: layer === 'silver' ? '#fff' : '#000',
+                                    fontSize: '10px', fontWeight: 700
+                                }}
+                            >
+                                {layer.charAt(0).toUpperCase()}
+                            </button>
+                        );
+                    })}
+                    <div style={{ width: 1, height: 20, background: 'var(--border-emphasis)' }} />
+                </>
             )}
 
-            <div style={{ width: '1px', height: '24px', background: borderColor }} />
-
-            <button
-                onClick={onClearSelection}
-                title="Clear Selection"
-                style={buttonStyle}
-                onMouseEnter={(e) => e.currentTarget.style.background = isDark ? '#444' : '#eee'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-            >
+            {/* Clear Selection */}
+            <button onClick={onClearSelection} title="Clear Selection" style={{ ...buttonStyle, color: 'var(--text-secondary)' }} onMouseEnter={handleHover} onMouseLeave={handleLeave}>
                 <X size={16} />
             </button>
         </div>

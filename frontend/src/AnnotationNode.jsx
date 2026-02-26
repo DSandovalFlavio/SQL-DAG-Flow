@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 
 const AnnotationNode = ({ id, data, selected }) => {
     const [hovered, setHovered] = useState(false);
+    const isDark = data.theme === 'dark';
 
     return (
         <>
@@ -11,7 +12,7 @@ const AnnotationNode = ({ id, data, selected }) => {
                 minWidth={150}
                 minHeight={50}
                 isVisible={selected}
-                lineStyle={{ border: '1px solid #777' }}
+                lineStyle={{ border: '1px solid var(--border-strong)' }}
                 handleStyle={{ width: 8, height: 8 }}
             />
             <div
@@ -21,46 +22,44 @@ const AnnotationNode = ({ id, data, selected }) => {
                     padding: '15px',
                     height: '100%',
                     width: '100%',
-                    boxSizing: 'border-box', // Ensure padding doesn't affect dimensions negatively
+                    boxSizing: 'border-box',
                     display: 'flex',
                     flexDirection: 'column',
-                    // Auto-resize logic handled by React Flow if dimensions not set, but NodeResizer interaction implies manual sizing too.
-                    // For "auto" resize based on text, we rely on the container scaling or manual resize. 
-                    // Let's ensure content flows well.
                     justifyContent: 'flex-start',
-                    background: data.isGroup ? 'rgba(255, 255, 255, 0.05)' : (data.transparent ? 'transparent' : (data.theme === 'dark' ? '#222' : '#fff')),
-                    border: data.borderless ? 'none' : (data.isGroup ? '2px dashed rgba(128,128,128,0.5)' : (data.transparent ? '1px dashed rgba(128,128,128,0.3)' : '1px solid #777')),
-                    borderRadius: '8px',
-                    color: data.theme === 'dark' ? '#fff' : '#000',
+                    background: data.isGroup ? 'rgba(255, 255, 255, 0.03)' : (data.transparent ? 'transparent' : 'var(--surface-elevated)'),
+                    border: data.borderless ? 'none' : (data.isGroup ? '2px dashed var(--border-emphasis)' : (data.transparent ? '1px dashed var(--border-default)' : '1px solid var(--border-default)')),
+                    borderRadius: '10px',
+                    color: 'var(--text-primary)',
                     zIndex: data.isGroup ? -1 : 10,
-                    boxShadow: (data.isGroup || data.transparent) ? 'none' : '0 4px 6px rgba(0,0,0,0.1)',
-                    textAlign: data.isGroup ? 'left' : 'left', // Markdown usually looks better left-aligned
-                    fontSize: (data.fontSize || (data.isGroup ? 14 : 14)) + 'px',
+                    boxShadow: (data.isGroup || data.transparent) ? 'none' : 'var(--shadow-sm)',
+                    textAlign: 'left',
+                    fontSize: (data.fontSize || 14) + 'px',
                     position: 'relative',
-                    overflow: 'hidden' // Clip content if it exceeds resized box
+                    overflow: 'hidden',
+                    transition: 'box-shadow 0.2s ease'
                 }}
             >
-                {/* Three Dots Menu Button - Refined Design */}
+                {/* Three Dots Menu Button */}
                 {(hovered || selected) && (
                     <div
                         onClick={(e) => {
                             e.stopPropagation();
-                            // Inject id for consistency with CustomNode
                             data.id = id;
-                            data.type = 'annotation'; // Helper
+                            data.type = 'annotation';
                             if (data.onEdit) data.onEdit(data);
                         }}
                         className="nodrag"
                         title="Settings"
                         style={{
                             position: 'absolute',
-                            top: '4px',
-                            right: '4px',
-                            background: data.theme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.8)',
-                            color: data.theme === 'dark' ? '#fff' : '#333',
-                            width: '20px',
-                            height: '20px',
-                            borderRadius: '4px',
+                            top: '6px',
+                            right: '6px',
+                            background: 'var(--surface-tooltip)',
+                            backdropFilter: 'blur(8px)',
+                            color: 'var(--text-secondary)',
+                            width: '22px',
+                            height: '22px',
+                            borderRadius: '6px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -68,18 +67,19 @@ const AnnotationNode = ({ id, data, selected }) => {
                             fontSize: '14px',
                             lineHeight: '10px',
                             fontWeight: 'bold',
-                            opacity: 0.7,
-                            transition: 'opacity 0.2s',
-                            zIndex: 20
+                            opacity: 0.8,
+                            transition: 'opacity 0.15s ease, background 0.15s ease',
+                            zIndex: 20,
+                            border: '1px solid var(--border-default)'
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                        onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'var(--interactive-active)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.8'; e.currentTarget.style.background = 'var(--surface-tooltip)'; }}
                     >
                         <div style={{ marginTop: '-4px' }}>...</div>
                     </div>
                 )}
 
-                {data.isGroup && <div style={{ fontWeight: 'bold', opacity: 0.7, marginBottom: '5px', pointerEvents: 'none' }}>{data.label}</div>}
+                {data.isGroup && <div style={{ fontWeight: '600', opacity: 0.6, marginBottom: '5px', pointerEvents: 'none', letterSpacing: '-0.01em' }}>{data.label}</div>}
 
                 {!data.isGroup && (
                     <div style={{ pointerEvents: 'none', width: '100%', height: '100%', overflowY: 'auto' }} className="markdown-content">

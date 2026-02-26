@@ -436,7 +436,7 @@ const Flow = () => {
         const isIncoming = selectedNode && edge.target === selectedNode.id;
         const isOutgoing = selectedNode && edge.source === selectedNode.id;
 
-        let stroke = '#b1b1b7'; // Default gray
+        let stroke = 'var(--edge-default)';
         let strokeWidth = 1;
         let opacity = 1;
         let animated = false;
@@ -450,38 +450,38 @@ const Flow = () => {
 
         if (selectedNode && !lineageNodes) {
           if (isIncoming) {
-            stroke = theme === 'dark' ? '#00b4d8' : '#0077b6';
+            stroke = 'var(--edge-incoming)';
             strokeWidth = 3;
             opacity = 1;
             animated = true;
             zIndex = 10;
           } else if (isOutgoing) {
-            stroke = theme === 'dark' ? '#ff4d6d' : '#c9184a';
+            stroke = 'var(--edge-outgoing)';
             strokeWidth = 3;
             opacity = 1;
             animated = true;
             zIndex = 10;
           } else {
             opacity = 0.1;
-            stroke = '#555';
+            stroke = 'var(--edge-dimmed)';
             animated = false;
           }
         } else if (lineageNodes) {
           if (isInLineage) {
-            stroke = theme === 'dark' ? '#9d4edd' : '#7b2cbf'; // Purple hue for full lineage distinct from immediate red/blue
+            stroke = 'var(--edge-lineage)';
             strokeWidth = 3;
             opacity = 1;
             animated = true;
             zIndex = 10;
           } else {
             opacity = 0.1;
-            stroke = '#555';
+            stroke = 'var(--edge-dimmed)';
             animated = false;
           }
         } else {
-          stroke = theme === 'dark' ? '#666' : '#999';
+          stroke = 'var(--edge-default)';
           strokeWidth = 2;
-          opacity = theme === 'dark' ? 0.8 : 0.8;
+          opacity = 0.8;
           animated = false;
         }
 
@@ -502,7 +502,7 @@ const Flow = () => {
           zIndex,
           labelStyle: { fontSize: 9, fontWeight: 600, fill: stroke },
           labelBgStyle: {
-            fill: theme === 'dark' ? '#1a1a1a' : '#fff',
+            fill: 'var(--surface-elevated)',
             fillOpacity: 0.85,
             rx: 3, ry: 3
           },
@@ -810,11 +810,10 @@ const Flow = () => {
     }
   };
 
-  const bg = theme === 'dark' ? '#111' : '#f5f5f5';
-  const dots = theme === 'dark' ? '#333' : '#ddd';
-  const panelBg = theme === 'dark' ? 'rgba(30,30,30,0.85)' : 'rgba(255,255,255,0.85)';
-  const textColor = theme === 'dark' ? '#fff' : '#000';
-  const borderColor = theme === 'dark' ? '#444' : '#ddd';
+  // All colors now flow from CSS variables via data-theme attribute
+  const panelBg = 'var(--surface-tooltip)';
+  const textColor = 'var(--text-primary)';
+  const borderColor = 'var(--border-emphasis)';
 
   const topButtonStyle = {
     background: 'transparent',
@@ -845,20 +844,20 @@ const Flow = () => {
   };
 
   return (
-    <div ref={exportRef} style={{ width: '100vw', height: '100vh', background: bg, transition: 'background 0.3s', position: 'relative', overflow: 'hidden' }}>
+    <div ref={exportRef} data-theme={theme} style={{ width: '100vw', height: '100vh', background: 'var(--canvas-bg)', transition: 'background 0.3s ease', position: 'relative', overflow: 'hidden' }}>
       <style>
         {`
             .react-flow__controls-button {
-                background: ${theme === 'dark' ? '#222' : '#fff'} !important;
-                border-bottom: 1px solid ${theme === 'dark' ? '#333' : '#ddd'} !important;
-                fill: ${theme === 'dark' ? '#fff' : '#000'} !important;
-                color: ${theme === 'dark' ? '#fff' : '#000'} !important;
+                background: var(--surface-elevated) !important;
+                border-bottom: 1px solid var(--border-default) !important;
+                fill: var(--text-primary) !important;
+                color: var(--text-primary) !important;
             }
             .react-flow__controls-button svg {
-                fill: ${theme === 'dark' ? '#fff' : '#000'} !important;
+                fill: var(--text-primary) !important;
             }
             .react-flow__controls-button:hover {
-                 background: ${theme === 'dark' ? '#333' : '#f0f0f0'} !important;
+                 background: var(--interactive-hover) !important;
             }
             `}
       </style>
@@ -866,9 +865,9 @@ const Flow = () => {
       {/* Top Navigation Bar */}
       {!isExporting && (
         <div style={{
-          position: 'absolute', top: 0, left: 0, width: '100%', height: '60px',
-          background: panelBg, backdropFilter: 'blur(10px)',
-          borderBottom: `1px solid ${borderColor}`,
+          position: 'absolute', top: 0, left: 0, width: '100%', height: '56px',
+          background: panelBg, backdropFilter: 'blur(16px)',
+          borderBottom: '1px solid var(--border-default)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '0 20px', zIndex: 100, boxSizing: 'border-box'
         }}>
@@ -878,16 +877,17 @@ const Flow = () => {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               style={{
-                background: 'transparent', border: 'none', color: textColor,
-                fontSize: '18px', fontWeight: '800', letterSpacing: '-0.5px', width: '400px', outline: 'none', marginBottom: '4px'
+                background: 'transparent', border: 'none', color: 'var(--text-primary)',
+                fontSize: '17px', fontWeight: '700', letterSpacing: '-0.02em', width: '400px', outline: 'none', marginBottom: '2px',
+                fontVariationSettings: "'opsz' 32"
               }}
             />
             <input
               value={subtitle}
               onChange={(e) => setSubtitle(e.target.value)}
               style={{
-                background: 'transparent', border: 'none', color: textColor,
-                opacity: 0.6, fontSize: '11px', outline: 'none'
+                background: 'transparent', border: 'none', color: 'var(--text-tertiary)',
+                fontSize: '11px', outline: 'none'
               }}
             />
           </div>
@@ -904,7 +904,7 @@ const Flow = () => {
             >
               <RefreshCw size={16} /> Refresh
             </button>
-            <div style={{ width: 1, height: 20, background: borderColor, margin: '0 4px' }}></div>
+            <div style={{ width: 1, height: 20, background: 'var(--border-emphasis)', margin: '0 4px' }}></div>
 
             <button onClick={handleNewConfig} title="New Configuration" style={topButtonStyle}>
               <FilePlus size={16} /> New
@@ -916,7 +916,7 @@ const Flow = () => {
               <Save size={16} /> Save
             </button>
 
-            <div style={{ width: 1, height: 20, background: borderColor, margin: '0 4px' }}></div>
+            <div style={{ width: 1, height: 20, background: 'var(--border-emphasis)', margin: '0 4px' }}></div>
 
             <button onClick={downloadImage} title="Export PNG" style={topButtonStyle}>
               <Image size={16} /> Export PNG
@@ -925,14 +925,14 @@ const Flow = () => {
               <Ruler size={16} /> Export SVG
             </button>
 
-            <div style={{ width: 1, height: 20, background: borderColor, margin: '0 4px' }}></div>
+            <div style={{ width: 1, height: 20, background: 'var(--border-emphasis)', margin: '0 4px' }}></div>
 
             <button
               onClick={() => window.open('https://github.com/dsandovalflavio/SQL-DAG-Flow', '_blank')}
               title="View on GitHub"
               style={topButtonStyle}
             >
-              <div style={{ width: 16, height: 16, borderRadius: '50%', border: `1px solid ${textColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 'bold' }}>i</div>
+              <div style={{ width: 16, height: 16, borderRadius: '50%', border: '1px solid var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 'bold' }}>i</div>
               Info
             </button>
           </div>
@@ -942,7 +942,7 @@ const Flow = () => {
       {/* Sidebar - zIndex increased to be above TopBar (100) */}
       {/* Sidebar - zIndex adjusted to be well above TopBar */}
       {sidebarOpen && (
-        <div style={{ position: 'absolute', top: '60px', left: 0, height: 'calc(100% - 60px)', zIndex: 1000 }}>
+        <div style={{ position: 'absolute', top: '56px', left: 0, height: 'calc(100% - 56px)', zIndex: 1000 }}>
           <Sidebar
             nodes={nodes}
             hiddenNodeIds={hiddenNodeIds}
@@ -1008,21 +1008,22 @@ const Flow = () => {
           transform: 'translateX(-50%)',
           zIndex: 10,
           background: panelBg,
-          backdropFilter: 'blur(10px)',
+          backdropFilter: 'blur(16px)',
           padding: '8px 16px',
-          borderRadius: '12px',
-          border: `1px solid ${borderColor}`,
+          borderRadius: '14px',
+          border: '1px solid var(--border-default)',
           display: 'flex',
           alignItems: 'center',
           gap: '12px',
-          boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
+          boxShadow: 'var(--shadow-lg)',
+          animation: 'slideUp 0.25s ease-out'
         }}>
           {/* Sidebar Toggle */}
           <button onClick={() => setSidebarOpen(prev => !prev)} title="Nodes & Layers" style={bottomButtonStyle}>
             <Menu size={20} />
           </button>
 
-          <div style={{ width: 1, height: 20, background: borderColor }}></div>
+          <div style={{ width: 1, height: 20, background: 'var(--border-emphasis)' }}></div>
 
           {/* View Settings */}
           <button onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} title="Toggle Theme" style={bottomButtonStyle}>
@@ -1033,7 +1034,7 @@ const Flow = () => {
             <button
               onClick={() => setViewSettingsOpen(!viewSettingsOpen)}
               title="View Settings"
-              style={{ ...bottomButtonStyle, background: viewSettingsOpen ? (theme === 'dark' ? '#333' : '#ddd') : 'transparent' }}
+              style={{ ...bottomButtonStyle, background: viewSettingsOpen ? 'var(--interactive-active)' : 'transparent' }}
             >
               <Settings size={20} />
             </button>
@@ -1043,19 +1044,19 @@ const Flow = () => {
               <div style={{
                 position: 'absolute', bottom: '130%', left: '50%', transform: 'translateX(-50%)',
                 background: panelBg, backdropFilter: 'blur(16px)',
-                padding: '16px', borderRadius: '16px', border: `1px solid ${borderColor}`,
+                padding: '16px', borderRadius: '16px', border: '1px solid var(--border-default)',
                 display: 'flex', flexDirection: 'column', gap: '12px', minWidth: '220px',
-                boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
-                zIndex: 1000
+                boxShadow: 'var(--shadow-xl)',
+                zIndex: 1000, animation: 'fadeIn 0.15s ease-out'
               }}>
-                <div style={{ fontSize: '10px', fontWeight: '800', letterSpacing: '1px', color: textColor, opacity: 0.5, marginBottom: '4px' }}>
+                <div style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '0.08em', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
                   VIEW SETTINGS
                 </div>
 
                 {/* Node Style */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: '600', color: textColor, opacity: 0.8 }}>Node Style</div>
-                  <div style={{ display: 'flex', background: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderRadius: '8px', padding: '2px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>Node Style</div>
+                  <div style={{ display: 'flex', background: 'var(--interactive-hover)', borderRadius: '8px', padding: '2px' }}>
                     {['full', 'border'].map(style => (
                       <button
                         key={style}
@@ -1065,14 +1066,14 @@ const Flow = () => {
                           padding: '6px',
                           borderRadius: '6px',
                           border: 'none',
-                          background: nodeStyle === style ? (theme === 'dark' ? '#333' : '#fff') : 'transparent',
-                          color: textColor,
+                          background: nodeStyle === style ? 'var(--interactive-active)' : 'transparent',
+                          color: 'var(--text-primary)',
                           opacity: nodeStyle === style ? 1 : 0.6,
                           fontSize: '11px',
                           fontWeight: '500',
                           cursor: 'pointer',
-                          boxShadow: nodeStyle === style ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
-                          transition: 'all 0.2s'
+                          boxShadow: nodeStyle === style ? 'var(--shadow-sm)' : 'none',
+                          transition: 'all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1)'
                         }}
                       >
                         {style === 'full' ? 'Full' : 'Minimal'}
@@ -1083,21 +1084,22 @@ const Flow = () => {
 
                 {/* Palette */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: '600', color: textColor, opacity: 0.8 }}>Colors</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px' }}>
-                    {['standard', 'vivid', 'pastel'].map(p => (
+                  <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>Colors</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+                    {['standard', 'vivid', 'pastel', 'linear'].map(p => (
                       <button
                         key={p}
                         onClick={() => setPalette(p)}
                         style={{
                           padding: '6px',
                           borderRadius: '6px',
-                          border: `1px solid ${palette === p ? borderColor : 'transparent'}`,
-                          background: palette === p ? (theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') : 'transparent',
-                          color: textColor,
+                          border: palette === p ? '1px solid var(--border-emphasis)' : '1px solid transparent',
+                          background: palette === p ? 'var(--interactive-active)' : 'transparent',
+                          color: 'var(--text-primary)',
                           fontSize: '10px',
                           cursor: 'pointer',
-                          textAlign: 'center'
+                          textAlign: 'center',
+                          transition: 'all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1)'
                         }}
                       >
                         {p.charAt(0).toUpperCase() + p.slice(1)}
@@ -1108,7 +1110,7 @@ const Flow = () => {
 
                 {/* Dialect */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: '600', color: textColor, opacity: 0.8 }}>Dialect</div>
+                  <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>Dialect</div>
                   <select
                     value={dialect}
                     onChange={(e) => {
@@ -1117,10 +1119,10 @@ const Flow = () => {
                     }}
                     style={{
                       width: '100%',
-                      background: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+                      background: 'var(--interactive-hover)',
                       border: 'none',
                       borderRadius: '8px',
-                      color: textColor,
+                      color: 'var(--text-primary)',
                       padding: '8px',
                       fontSize: '12px',
                       outline: 'none',
@@ -1128,14 +1130,14 @@ const Flow = () => {
                     }}
                   >
                     {['bigquery', 'snowflake', 'postgres', 'databricks', 'spark', 'redshift', 'duckdb'].map(d => (
-                      <option key={d} value={d} style={{ background: theme === 'dark' ? '#222' : '#fff' }}>
+                      <option key={d} value={d} style={{ background: 'var(--surface-elevated)' }}>
                         {d.charAt(0).toUpperCase() + d.slice(1)}
                       </option>
                     ))}
                   </select>
                 </div>
 
-                <div style={{ width: '100%', height: '1px', background: borderColor, margin: '4px 0', opacity: 0.5 }}></div>
+                <div style={{ width: '100%', height: '1px', background: 'var(--border-default)', margin: '4px 0' }}></div>
 
                 {/* Discovery Mode */}
                 <button
@@ -1148,23 +1150,23 @@ const Flow = () => {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    background: discoveryMode ? (theme === 'dark' ? 'rgba(50, 200, 100, 0.1)' : 'rgba(50, 200, 100, 0.1)') : 'transparent',
-                    border: discoveryMode ? '1px solid rgba(50, 200, 100, 0.3)' : `1px solid ${borderColor}`,
+                    background: discoveryMode ? 'var(--accent-muted)' : 'transparent',
+                    border: discoveryMode ? '1px solid var(--accent-primary)' : '1px solid var(--border-emphasis)',
                     padding: '10px',
                     borderRadius: '8px',
                     cursor: 'pointer',
-                    transition: 'all 0.2s',
+                    transition: 'all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1)',
                     width: '100%'
                   }}
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                    <span style={{ fontSize: '12px', fontWeight: '600', color: textColor }}>Discovery Mode</span>
-                    <span style={{ fontSize: '9px', color: textColor, opacity: 0.6 }}>Show missing files</span>
+                    <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)' }}>Discovery Mode</span>
+                    <span style={{ fontSize: '9px', color: 'var(--text-tertiary)' }}>Show missing files</span>
                   </div>
 
                   <div style={{
                     width: '32px', height: '18px',
-                    background: discoveryMode ? '#2ecc71' : (theme === 'dark' ? '#444' : '#ccc'),
+                    background: discoveryMode ? 'var(--accent-primary)' : 'var(--interactive-active)',
                     borderRadius: '10px',
                     position: 'relative',
                     transition: 'background 0.2s'
@@ -1196,7 +1198,7 @@ const Flow = () => {
             <Zap size={20} />
           </button>
 
-          <div style={{ width: 1, height: 20, background: borderColor }}></div>
+          <div style={{ width: 1, height: 20, background: 'var(--border-emphasis)' }}></div>
 
           {/* Quick Filters (Layers) - Compact */}
           <div style={{ display: 'flex', gap: '4px' }}>
@@ -1213,11 +1215,11 @@ const Flow = () => {
                 title={`Toggle ${layer.key} layer`}
                 style={{
                   width: 24, height: 24, borderRadius: '6px', border: 'none', cursor: 'pointer',
-                  background: visibleLayers[layer.key] ? layer.color : (theme === 'dark' ? '#333' : '#ddd'),
-                  color: visibleLayers[layer.key] ? '#000' : (theme === 'dark' ? '#777' : '#999'),
+                  background: visibleLayers[layer.key] ? layer.color : 'var(--interactive-active)',
+                  color: visibleLayers[layer.key] ? '#000' : 'var(--text-tertiary)',
                   fontWeight: 'bold', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   opacity: visibleLayers[layer.key] ? 1 : 0.5,
-                  transition: 'all 0.2s'
+                  transition: 'all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1)'
                 }}
               >
                 {layer.label}
@@ -1225,17 +1227,17 @@ const Flow = () => {
             ))}
           </div>
 
-          <div style={{ width: 1, height: 20, background: borderColor }}></div>
+          <div style={{ width: 1, height: 20, background: 'var(--border-emphasis)' }}></div>
 
           {/* Selection Mode Toggle */}
-          <div style={{ display: 'flex', background: theme === 'dark' ? '#333' : '#ddd', borderRadius: '8px', padding: '2px' }}>
+          <div style={{ display: 'flex', background: 'var(--interactive-active)', borderRadius: '8px', padding: '2px' }}>
             <button
               onClick={() => setSelectionMode('pan')}
               title="Pan Mode (Hand)"
               style={{
                 ...bottomButtonStyle,
-                background: selectionMode === 'pan' ? (theme === 'dark' ? '#555' : '#fff') : 'transparent',
-                boxShadow: selectionMode === 'pan' ? '0 2px 5px rgba(0,0,0,0.2)' : 'none',
+                background: selectionMode === 'pan' ? 'var(--surface-elevated)' : 'transparent',
+                boxShadow: selectionMode === 'pan' ? 'var(--shadow-sm)' : 'none',
                 padding: '6px'
               }}
             >
@@ -1246,8 +1248,8 @@ const Flow = () => {
               title="Select Mode (Box)"
               style={{
                 ...bottomButtonStyle,
-                background: selectionMode === 'select' ? (theme === 'dark' ? '#555' : '#fff') : 'transparent',
-                boxShadow: selectionMode === 'select' ? '0 2px 5px rgba(0,0,0,0.2)' : 'none',
+                background: selectionMode === 'select' ? 'var(--surface-elevated)' : 'transparent',
+                boxShadow: selectionMode === 'select' ? 'var(--shadow-sm)' : 'none',
                 padding: '6px'
               }}
             >
@@ -1255,7 +1257,7 @@ const Flow = () => {
             </button>
           </div>
 
-          <div style={{ width: 1, height: 20, background: borderColor }}></div>
+          <div style={{ width: 1, height: 20, background: 'var(--border-emphasis)' }}></div>
 
           {/* Tools */}
           <button onClick={() => addAnnotation('comment')} title="Add Comment" style={bottomButtonStyle}>
@@ -1265,7 +1267,7 @@ const Flow = () => {
             <BoxSelect size={20} />
           </button>
 
-          <div style={{ width: 1, height: 20, background: borderColor }}></div>
+          <div style={{ width: 1, height: 20, background: 'var(--border-emphasis)' }}></div>
 
           {/* Statistics Toggle */}
           <button
@@ -1369,27 +1371,29 @@ const Flow = () => {
         configListModalOpen && (
           <div style={{
             position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-            background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            backdropFilter: 'blur(5px)'
+            background: 'var(--surface-overlay)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(8px)'
           }}>
             <div style={{
-              background: theme === 'dark' ? '#1a1a1a' : '#fff',
-              width: '400px', borderRadius: '12px', padding: '20px',
-              border: `1px solid ${borderColor}`,
-              boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
+              background: 'var(--surface-elevated)',
+              width: '400px', borderRadius: '16px', padding: '24px',
+              border: '1px solid var(--border-default)',
+              boxShadow: 'var(--shadow-xl)',
+              animation: 'fadeIn 0.2s ease-out'
             }}>
-              <h3 style={{ margin: '0 0 20px 0', color: textColor }}>Load Configuration</h3>
-              <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {availableConfigs.length === 0 && <div style={{ opacity: 0.5, color: textColor }}>No config files found.</div>}
+              <h3 style={{ margin: '0 0 20px 0', color: 'var(--text-primary)', fontWeight: 700, fontSize: '16px', letterSpacing: '-0.02em' }}>Load Configuration</h3>
+              <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {availableConfigs.length === 0 && <div style={{ opacity: 0.5, color: 'var(--text-secondary)' }}>No config files found.</div>}
                 {availableConfigs.map(file => (
                   <button
                     key={file}
                     onClick={() => selectConfig(file)}
                     style={{
-                      padding: '10px', borderRadius: '6px', border: `1px solid ${borderColor}`,
-                      background: 'transparent', color: textColor, cursor: 'pointer', textAlign: 'left',
-                      fontWeight: file === currentConfigFile ? 'bold' : 'normal',
-                      backgroundColor: file === currentConfigFile ? (theme === 'dark' ? '#333' : '#eee') : 'transparent'
+                      padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-default)',
+                      background: file === currentConfigFile ? 'var(--interactive-active)' : 'transparent',
+                      color: 'var(--text-primary)', cursor: 'pointer', textAlign: 'left',
+                      fontWeight: file === currentConfigFile ? '600' : '400',
+                      fontSize: '13px', transition: 'all 0.15s ease'
                     }}
                   >
                     {file}
@@ -1400,8 +1404,9 @@ const Flow = () => {
                 onClick={() => setConfigListModalOpen(false)}
                 style={{
                   marginTop: '20px', width: '100%', padding: '10px',
-                  background: theme === 'dark' ? '#333' : '#eee', color: textColor,
-                  border: 'none', borderRadius: '6px', cursor: 'pointer'
+                  background: 'var(--interactive-active)', color: 'var(--text-primary)',
+                  border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 500, fontSize: '13px',
+                  transition: 'background 0.15s ease'
                 }}
               >
                 Cancel
@@ -1441,12 +1446,12 @@ const Flow = () => {
         onInit={setRfInstance}
       >
         {!isExporting && <Controls />}
-        {!isExporting && <Background variant="dots" gap={20} size={1} color={dots} />}
+        {!isExporting && <Background variant="dots" gap={20} size={1} color={'var(--canvas-dots)'} />}
         {!isExporting && (
           <MiniMap
             pannable
             zoomable
-            style={{ background: theme === 'dark' ? '#222' : '#fff' }}
+            style={{ background: 'var(--minimap-bg)' }}
             nodeColor={(n) => {
               if (n.data.layer === 'bronze') return '#A65D29';
               if (n.data.layer === 'silver') return '#BCC6D9';
@@ -1465,7 +1470,7 @@ const Flow = () => {
         opacity: isExporting ? 1.0 : 0.3,
         fontSize: '10px',
         fontWeight: 'bold',
-        color: textColor,
+        color: 'var(--text-tertiary)',
         fontFamily: "'Inter', sans-serif"
       }}>
         {isExporting ? 'Created by SQL DAG Flow' : 'Developed by @DSandovalflavio'}
