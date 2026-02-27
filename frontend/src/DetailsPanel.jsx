@@ -552,6 +552,51 @@ const DetailsPanel = ({
                                     </div>
                                 </div>
 
+                                {/* Description (from SQL header comments or manual) */}
+                                <div style={{ marginBottom: '16px' }}>
+                                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                        <Info size={12} /> Description
+                                    </div>
+                                    {node.description || node.details?.header_meta?.description ? (
+                                        <div style={{
+                                            fontSize: '12px', lineHeight: '1.5',
+                                            color: 'var(--text-secondary)',
+                                            padding: '8px 10px',
+                                            background: 'var(--surface-primary)',
+                                            borderRadius: '8px',
+                                            border: '1px solid var(--border-default)',
+                                        }}>
+                                            {node.description || node.details?.header_meta?.description}
+                                            {node.details?.header_meta?.author && (
+                                                <div style={{ marginTop: '6px', fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                                                    Author: {node.details.header_meta.author}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div
+                                            onClick={() => {
+                                                const desc = window.prompt('Add a description for this model:');
+                                                if (desc !== null) {
+                                                    onUpdateNode(node.id, { description: desc });
+                                                }
+                                            }}
+                                            style={{
+                                                fontSize: '12px',
+                                                color: 'var(--text-tertiary)',
+                                                padding: '8px 10px',
+                                                background: 'var(--surface-primary)',
+                                                borderRadius: '8px',
+                                                border: '1px solid var(--border-default)',
+                                                cursor: 'pointer',
+                                                transition: 'border-color 0.15s',
+                                            }}
+                                        >
+                                            Click to add description...
+                                        </div>
+                                    )}
+                                </div>
+
                                 {/* Tag Editor */}
                                 <div style={{ marginBottom: '16px' }}>
                                     <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>

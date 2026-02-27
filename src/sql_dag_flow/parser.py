@@ -1,13 +1,8 @@
 import os
-import sqlglot
-from sqlglot import exp
-import networkx as nx
-
-import os
-import sqlglot
-from sqlglot import exp
-import networkx as nx
 import re
+import sqlglot
+from sqlglot import exp
+import networkx as nx
 
 def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
     """
@@ -343,6 +338,36 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                     
                     # Convert sets to sorted lists for JSON serialization
                     column_references = {k: sorted(list(v)) for k, v in column_references.items()}
+                    
+                    # ===== Header Comment Extraction =====
+                    # Extract metadata from SQL header comments:
+                    #   -- @description: ...
+                    #   -- @author: ...
+                    #   -- @modified: ...
+                    #   -- Description: ... (first block comment)
+                    header_meta = {}
+                    header_lines = []
+                    for line in sql_content.split('\n'):
+                        stripped = line.strip()
+                        if stripped.startswith('--'):
+                            header_lines.append(stripped[2:].strip())
+                        elif stripped == '' and not header_lines:
+                            continue  # skip leading blank lines
+                        else:
+                            break  # stop at first non-comment line
+                    
+                    for hline in header_lines:
+                        # Match @key: value patterns
+                        meta_match = re.match(r'^@(\w+)[:\s]+(.+)$', hline, re.IGNORECASE)
+                        if meta_match:
+                            key = meta_match.group(1).lower()
+                            header_meta[key] = meta_match.group(2).strip()
+                    
+                    # If no @description, use first non-@ comment lines as description
+                    if 'description' not in header_meta:
+                        desc_lines = [l for l in header_lines if not l.startswith('@') and l.strip()]
+                        if desc_lines:
+                            header_meta['description'] = ' '.join(desc_lines[:3])
                              
                     tables[filename_base] = { 
                         "id": filename_base,
@@ -358,7 +383,8 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                         "cte_deps": cte_deps,
                         "business_rules": business_rules,
                         "complexity": complexity_breakdown,
-                        "column_references": column_references
+                        "column_references": column_references,
+                        "header_meta": header_meta
                     }
                 except Exception as e:
                     print(f"Error parsing {filepath}: {e}")
@@ -646,4 +672,17 @@ def build_graph(tables, discovery_mode=False, expanded_nodes=None):
             "type": "custom", 
         })
 
-    return nodes, edges
+    # ===== Cycle Detection =====
+    cycles = []
+    try:
+        raw_cycles = list(nx.simple_cycles(G))
+        for cycle in raw_cycles:
+            cycle_labels = []
+            for nid in cycle:
+                label = all_nodes_data.get(nid, {}).get("label", nid)
+                cycle_labels.append({"id": nid, "label": label})
+            cycles.append(cycle_labels)
+    except Exception:
+        pass
+
+    return nodes, edges, cycles

@@ -129,3 +129,23 @@ export const moveFile = async (currentPath, targetLayer) => {
         throw error;
     }
 };
+
+export const exportDataDictionary = async (dialect = 'bigquery') => {
+    try {
+        const response = await fetch(`${API_URL}/export?dialect=${dialect}`);
+        if (!response.ok) throw new Error("Failed to export");
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'data_dictionary.md';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        return { success: true };
+    } catch (error) {
+        console.error("Error exporting:", error);
+        return { error: error.message };
+    }
+};

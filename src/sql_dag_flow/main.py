@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Body
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -39,12 +40,12 @@ DIAGRAM_FILE = "sql_diagram.json"
 def get_graph(dialect: str = "bigquery", discovery: bool = False, expanded_nodes: str = ""):
     """Parses SQL files in the current directory and returns graph data."""
     if not os.path.exists(CURRENT_DIRECTORY):
-        return {"nodes": [], "edges": [], "error": "Directory not found"}
+        return {"nodes": [], "edges": [], "cycles": [], "error": "Directory not found"}
         
     exp_nodes_list = [n.strip() for n in expanded_nodes.split(",")] if expanded_nodes else []
     tables = parse_sql_files(CURRENT_DIRECTORY, dialect=dialect)
-    nodes, edges = build_graph(tables, discovery_mode=discovery, expanded_nodes=exp_nodes_list)
-    return {"nodes": nodes, "edges": edges}
+    nodes, edges, cycles = build_graph(tables, discovery_mode=discovery, expanded_nodes=exp_nodes_list)
+    return {"nodes": nodes, "edges": edges, "cycles": cycles}
 
 @app.post("/config/path")
 def set_path(path_data: dict = Body(...)):
@@ -99,12 +100,122 @@ def get_filtered_graph(data: dict = Body(...)):
     expanded_nodes = data.get("expanded_nodes", [])
     
     tables = parse_sql_files(CURRENT_DIRECTORY, allowed_subfolders=subfolders, dialect=dialect)
-    nodes, edges = build_graph(tables, discovery_mode=discovery, expanded_nodes=expanded_nodes)
-    return {"nodes": nodes, "edges": edges}
+    nodes, edges, cycles = build_graph(tables, discovery_mode=discovery, expanded_nodes=expanded_nodes)
+    return {"nodes": nodes, "edges": edges, "cycles": cycles}
 
 @app.get("/config/path")
 def get_path():
     return {"path": CURRENT_DIRECTORY}
+
+@app.get("/export")
+def export_data_dictionary(dialect: str = "bigquery"):
+    """Generates a Markdown data dictionary report."""
+    if not os.path.exists(CURRENT_DIRECTORY):
+        raise HTTPException(status_code=400, detail="Directory not found")
+    
+    tables = parse_sql_files(CURRENT_DIRECTORY, dialect=dialect)
+    nodes, edges, cycles = build_graph(tables, discovery_mode=False)
+    
+    lines = []
+    lines.append(f"# Data Dictionary")
+    lines.append(f"")
+    lines.append(f"**Project Path:** `{CURRENT_DIRECTORY}`  ")
+    lines.append(f"**Total Models:** {len(nodes)}  ")
+    lines.append(f"**Total Dependencies:** {len(edges)}  ")
+    lines.append(f"")
+    
+    if cycles:
+        lines.append(f"## ⚠️ Circular Dependencies ({len(cycles)})")
+        lines.append(f"")
+        for i, cycle in enumerate(cycles, 1):
+            cycle_str = " → ".join([n['label'] for n in cycle])
+            lines.append(f"{i}. {cycle_str} → {cycle[0]['label']}")
+        lines.append(f"")
+    
+    # Group by layer
+    layer_order = ['bronze', 'silver', 'gold', 'external', 'cte', 'other']
+    node_by_layer = {}
+    for n in nodes:
+        layer = n['data'].get('layer', 'other')
+        if layer not in node_by_layer:
+            node_by_layer[layer] = []
+        node_by_layer[layer].append(n)
+    
+    for layer in layer_order:
+        layer_nodes = node_by_layer.get(layer, [])
+        if not layer_nodes:
+            continue
+        lines.append(f"## {layer.capitalize()} Layer ({len(layer_nodes)} models)")
+        lines.append(f"")
+        
+        for n in sorted(layer_nodes, key=lambda x: x['data']['label']):
+            d = n['data'].get('details', {})
+            label = n['data']['label']
+            lines.append(f"### {label}")
+            lines.append(f"")
+            
+            # Metadata table
+            lines.append(f"| Property | Value |")
+            lines.append(f"|----------|-------|")
+            lines.append(f"| **Project** | {d.get('project', '-')} |")
+            lines.append(f"| **Dataset** | {d.get('dataset', '-')} |")
+            lines.append(f"| **Type** | {d.get('type', 'table')} |")
+            lines.append(f"| **Layer** | {layer} |")
+            
+            complexity = d.get('complexity', {})
+            if complexity:
+                lines.append(f"| **Complexity** | {complexity.get('score', 0)} |")
+            
+            header_meta = d.get('header_meta', {})
+            if header_meta.get('description'):
+                lines.append(f"| **Description** | {header_meta['description']} |")
+            if header_meta.get('author'):
+                lines.append(f"| **Author** | {header_meta['author']} |")
+            
+            incoming = n['data'].get('incomingCount', 0)
+            downstream = n['data'].get('downstreamCount', 0)
+            lines.append(f"| **Dependencies** | {incoming} incoming, {downstream} downstream |")
+            lines.append(f"")
+            
+            # Dependencies
+            deps = d.get('dependencies', {})
+            if deps:
+                lines.append(f"**Dependencies:** {', '.join(f'`{k}` ({v})' for k, v in deps.items()) if isinstance(deps, dict) else ', '.join(f'`{x}`' for x in deps)}")
+                lines.append(f"")
+            
+            # Business Rules
+            br = d.get('business_rules', {})
+            rules_items = []
+            for cat, items in br.items():
+                if items:
+                    rules_items.extend([f"- **{cat}**: `{r}`" for r in items[:3]])
+            if rules_items:
+                lines.append(f"**Business Rules:**")
+                lines.append(f"")
+                lines.extend(rules_items[:6])
+                lines.append(f"")
+            
+            # Column consumers
+            col_consumers = d.get('column_consumers', {})
+            if col_consumers:
+                lines.append(f"**Column Usage (downstream):**")
+                lines.append(f"")
+                lines.append(f"| Column | Consumers |")
+                lines.append(f"|--------|-----------|")
+                for col, consumers in sorted(col_consumers.items()):
+                    consumer_labels = ', '.join([c['label'] for c in consumers])
+                    lines.append(f"| `{col}` | {consumer_labels} |")
+                lines.append(f"")
+            
+            lines.append(f"---")
+            lines.append(f"")
+    
+    md_content = "\n".join(lines)
+    return Response(
+        content=md_content,
+        media_type="text/markdown",
+        headers={"Content-Disposition": "attachment; filename=data_dictionary.md"}
+    )
 
 class SaveRequest(BaseModel):
     nodes: list

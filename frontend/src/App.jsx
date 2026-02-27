@@ -4,7 +4,7 @@ import '@xyflow/react/dist/style.css';
 // import dagre from 'dagre'; // Removed in favor of ELK
 import { getLayoutedElements } from './algorithms/elk';
 import { toPng, toSvg } from 'html-to-image';
-import { fetchGraph, saveGraph, loadGraphState, setPath, getPath, scanFolders, fetchFilteredGraph, moveFile } from './api';
+import { fetchGraph, saveGraph, loadGraphState, setPath, getPath, scanFolders, fetchFilteredGraph, moveFile, exportDataDictionary } from './api';
 import './index.css';
 import CustomNode from './CustomNode';
 import AnnotationNode from './AnnotationNode';
@@ -17,7 +17,7 @@ import {
   Menu, Layout,
   FolderOpen, FilePlus, Save, Image, Ruler,
   Moon, Sun, Eye, EyeOff, Grid, MessageSquare, BoxSelect, Settings,
-  Hand, MousePointer2, RefreshCw, Globe, BarChart3, Zap, Tag
+  Hand, MousePointer2, RefreshCw, Globe, BarChart3, Zap, Tag, Download, AlertTriangle as AlertTriangleIcon
 } from 'lucide-react';
 import SelectionToolbar from './SelectionToolbar';
 import LayerStats from './LayerStats';
@@ -74,6 +74,7 @@ const Flow = () => {
   const [showStats, setShowStats] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [impactNode, setImpactNode] = useState(null);
+  const [cycles, setCycles] = useState([]);
 
   const nodeTypes = useMemo(() => ({ custom: CustomNode, annotation: AnnotationNode }), []);
 
@@ -603,6 +604,9 @@ const Flow = () => {
     }
 
     if (data.error) return;
+
+    // Store cycle warnings
+    if (data.cycles) setCycles(data.cycles);
 
     // Capture current positions AND tags to preserve across refresh
     const currentPositions = {};
@@ -1337,9 +1341,69 @@ const Flow = () => {
           >
             <BarChart3 size={20} />
           </button>
+
+          {/* Export Data Dictionary */}
+          <button
+            onClick={() => exportDataDictionary(dialect)}
+            title="Export Data Dictionary"
+            style={bottomButtonStyle}
+          >
+            <Download size={20} />
+          </button>
         </div>
       )
       }
+
+      {/* Cycle Warning Banner */}
+      {cycles.length > 0 && !isExporting && (
+        <div style={{
+          position: 'absolute', top: '70px', left: '50%', transform: 'translateX(-50%)',
+          zIndex: 998, display: 'flex', alignItems: 'center', gap: '8px',
+          padding: '8px 16px',
+          background: 'rgba(239, 68, 68, 0.12)',
+          border: '1px solid rgba(239, 68, 68, 0.3)',
+          borderRadius: '10px',
+          backdropFilter: 'blur(8px)',
+          boxShadow: 'var(--shadow-sm)',
+          animation: 'fadeIn 0.2s ease-out',
+        }}>
+          <AlertTriangleIcon size={14} style={{ color: '#ef4444', flexShrink: 0 }} />
+          <span style={{ fontSize: '11px', fontWeight: 600, color: '#ef4444' }}>
+            {cycles.length} circular {cycles.length === 1 ? 'dependency' : 'dependencies'} detected
+          </span>
+          <button
+            onClick={() => {
+              // Highlight cycle nodes
+              const cycleNodeIds = new Set();
+              cycles.forEach(c => c.forEach(n => cycleNodeIds.add(n.id)));
+              setNodes(nds => nds.map(n => ({
+                ...n,
+                selected: cycleNodeIds.has(n.id) ? true : n.selected
+              })));
+            }}
+            style={{
+              fontSize: '10px', fontWeight: 600,
+              background: 'rgba(239, 68, 68, 0.2)',
+              color: '#ef4444',
+              border: 'none', borderRadius: '4px',
+              padding: '2px 8px', cursor: 'pointer',
+            }}
+          >
+            Show
+          </button>
+          <button
+            onClick={() => setCycles([])}
+            style={{
+              background: 'transparent', border: 'none',
+              color: '#ef4444', cursor: 'pointer',
+              padding: '2px', display: 'flex',
+              opacity: 0.6,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Side Panel for Node Details */}
       {
