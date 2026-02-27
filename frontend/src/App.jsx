@@ -23,6 +23,7 @@ import SelectionToolbar from './SelectionToolbar';
 import LayerStats from './LayerStats';
 import CommandPalette from './CommandPalette';
 import ImpactAnalysis from './ImpactAnalysis';
+import BreadcrumbTrail from './BreadcrumbTrail';
 
 // Dagre layout function removed. Using ELK from ./algorithms/elk
 
@@ -75,6 +76,8 @@ const Flow = () => {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [impactNode, setImpactNode] = useState(null);
   const [cycles, setCycles] = useState([]);
+  const [navHistory, setNavHistory] = useState([]);
+  const [refreshDiff, setRefreshDiff] = useState(null); // { added, removed, changed }
 
   const nodeTypes = useMemo(() => ({ custom: CustomNode, annotation: AnnotationNode }), []);
 
@@ -98,7 +101,11 @@ const Flow = () => {
       setSelectedNode(nodeData);
       setLineageNodes(null);
       setDetailsNode(nodeData);
-      // setSidebarOpen(true); // User wants details panel (right), not node list sidebar (left)
+      // Track breadcrumb history
+      setNavHistory(prev => {
+        const next = [...prev, { id: nodeData.id || nodeData.details?.id, label: nodeData.label, layer: nodeData.layer }];
+        return next.slice(-10);
+      });
       setContextMenu(null);
     }
   }, []); // Removed nodes dependency
@@ -411,6 +418,52 @@ const Flow = () => {
         rfInstance?.fitView({ duration: 500 });
         return;
       }
+      // Arrow Left = Navigate to upstream neighbor
+      if (e.key === 'ArrowLeft' && !e.ctrlKey && !e.metaKey) {
+        const sel = nodesRef.current.find(n => n.selected);
+        if (sel) {
+          const inEdges = edgesRef.current.filter(ed => ed.target === sel.id);
+          if (inEdges.length > 0) {
+            e.preventDefault();
+            const upId = inEdges[0].source;
+            const upNode = nodesRef.current.find(n => n.id === upId);
+            if (upNode) {
+              setNodes(nds => nds.map(n => ({ ...n, selected: n.id === upId })));
+              setSelectedNode(upNode.data);
+              setDetailsNode(upNode.data);
+              setNavHistory(prev => {
+                const next = [...prev, { id: upNode.id, label: upNode.data.label, layer: upNode.data.layer }];
+                return next.slice(-10);
+              });
+              rfInstance?.fitView({ nodes: [{ id: upId }], duration: 400, padding: 0.5 });
+            }
+          }
+        }
+        return;
+      }
+      // Arrow Right = Navigate to downstream neighbor
+      if (e.key === 'ArrowRight' && !e.ctrlKey && !e.metaKey) {
+        const sel = nodesRef.current.find(n => n.selected);
+        if (sel) {
+          const outEdges = edgesRef.current.filter(ed => ed.source === sel.id);
+          if (outEdges.length > 0) {
+            e.preventDefault();
+            const downId = outEdges[0].target;
+            const downNode = nodesRef.current.find(n => n.id === downId);
+            if (downNode) {
+              setNodes(nds => nds.map(n => ({ ...n, selected: n.id === downId })));
+              setSelectedNode(downNode.data);
+              setDetailsNode(downNode.data);
+              setNavHistory(prev => {
+                const next = [...prev, { id: downNode.id, label: downNode.data.label, layer: downNode.data.layer }];
+                return next.slice(-10);
+              });
+              rfInstance?.fitView({ nodes: [{ id: downId }], duration: 400, padding: 0.5 });
+            }
+          }
+        }
+        return;
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -608,6 +661,37 @@ const Flow = () => {
     // Store cycle warnings
     if (data.cycles) setCycles(data.cycles);
 
+    // ===== Diff View: Compare old vs new graph =====
+    const oldNodeIds = new Set(nodes.filter(n => n.type !== 'annotation').map(n => n.id));
+    const newNodeIds = new Set(data.nodes.map(n => n.id));
+    const addedIds = [...newNodeIds].filter(id => !oldNodeIds.has(id));
+    const removedIds = [...oldNodeIds].filter(id => !newNodeIds.has(id));
+    // Detect changed nodes (content hash changed)
+    let changedCount = 0;
+    if (oldNodeIds.size > 0) {
+      data.nodes.forEach(newNode => {
+        if (oldNodeIds.has(newNode.id)) {
+          const oldNode = nodes.find(n => n.id === newNode.id);
+          if (oldNode && oldNode.data?.details?.content !== newNode.data?.details?.content) {
+            changedCount++;
+          }
+        }
+      });
+    }
+    if (oldNodeIds.size > 0 && (addedIds.length > 0 || removedIds.length > 0 || changedCount > 0)) {
+      setRefreshDiff({
+        added: addedIds.map(id => {
+          const n = data.nodes.find(x => x.id === id);
+          return { id, label: n?.data?.label || id };
+        }),
+        removed: removedIds.map(id => {
+          const n = nodes.find(x => x.id === id);
+          return { id, label: n?.data?.label || id };
+        }),
+        changed: changedCount
+      });
+    }
+
     // Capture current positions AND tags to preserve across refresh
     const currentPositions = {};
     const currentTags = {};
@@ -686,6 +770,19 @@ const Flow = () => {
 
     setNodes(finalNodes);
     setEdges(finalEdges);
+  };
+
+  // Helper: Navigate to node from breadcrumb
+  const navigateToNode = (item, index) => {
+    const targetNode = nodes.find(n => n.id === item.id);
+    if (targetNode && rfInstance) {
+      rfInstance.fitView({ nodes: [{ id: item.id }], duration: 400, padding: 0.5 });
+      setNodes(nds => nds.map(n => ({ ...n, selected: n.id === item.id })));
+      setSelectedNode(targetNode.data);
+      setDetailsNode(targetNode.data);
+      // Trim history to this point
+      setNavHistory(prev => prev.slice(0, index + 1));
+    }
   };
 
   const expandedNodesRef = useRef(expandedNodes);
@@ -1399,6 +1496,54 @@ const Flow = () => {
               padding: '2px', display: 'flex',
               opacity: 0.6,
             }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {/* Breadcrumb Trail */}
+      {navHistory.length > 0 && !isExporting && (
+        <BreadcrumbTrail
+          history={navHistory}
+          onNavigate={navigateToNode}
+          onClear={() => setNavHistory([])}
+          theme={theme}
+        />
+      )}
+
+      {/* Diff Summary Banner (after refresh) */}
+      {refreshDiff && !isExporting && (
+        <div style={{
+          position: 'absolute', top: cycles.length > 0 ? '110px' : '70px', left: '50%', transform: 'translateX(-50%)',
+          zIndex: 997, display: 'flex', alignItems: 'center', gap: '10px',
+          padding: '8px 16px',
+          background: 'var(--surface-elevated)',
+          border: '1px solid var(--border-default)',
+          borderRadius: '10px',
+          backdropFilter: 'blur(8px)',
+          boxShadow: 'var(--shadow-sm)',
+          animation: 'fadeIn 0.2s ease-out',
+        }}>
+          <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)' }}>Refresh Summary:</span>
+          {refreshDiff.added.length > 0 && (
+            <span style={{ fontSize: '10px', fontWeight: 700, color: '#22c55e', background: 'rgba(34,197,94,0.12)', padding: '2px 6px', borderRadius: '4px' }}>
+              +{refreshDiff.added.length} added
+            </span>
+          )}
+          {refreshDiff.removed.length > 0 && (
+            <span style={{ fontSize: '10px', fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.12)', padding: '2px 6px', borderRadius: '4px' }}>
+              -{refreshDiff.removed.length} removed
+            </span>
+          )}
+          {refreshDiff.changed > 0 && (
+            <span style={{ fontSize: '10px', fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.12)', padding: '2px 6px', borderRadius: '4px' }}>
+              ~{refreshDiff.changed} modified
+            </span>
+          )}
+          <button
+            onClick={() => setRefreshDiff(null)}
+            style={{ background: 'transparent', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px', display: 'flex', opacity: 0.6 }}
           >
             ×
           </button>
