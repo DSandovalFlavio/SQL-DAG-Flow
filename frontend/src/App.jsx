@@ -17,13 +17,14 @@ import {
   Menu, Layout,
   FolderOpen, FilePlus, Save, Image, Ruler,
   Moon, Sun, Eye, EyeOff, Grid, MessageSquare, BoxSelect, Settings,
-  Hand, MousePointer2, RefreshCw, Globe, BarChart3, Zap, Tag, Download, AlertTriangle as AlertTriangleIcon
+  Hand, MousePointer2, RefreshCw, Globe, BarChart3, Zap, Tag, Download, AlertTriangle as AlertTriangleIcon, Compass
 } from 'lucide-react';
 import SelectionToolbar from './SelectionToolbar';
 import LayerStats from './LayerStats';
 import CommandPalette from './CommandPalette';
 import ImpactAnalysis from './ImpactAnalysis';
 import BreadcrumbTrail from './BreadcrumbTrail';
+import TourMode from './TourMode';
 
 // Dagre layout function removed. Using ELK from ./algorithms/elk
 
@@ -77,7 +78,8 @@ const Flow = () => {
   const [impactNode, setImpactNode] = useState(null);
   const [cycles, setCycles] = useState([]);
   const [navHistory, setNavHistory] = useState([]);
-  const [refreshDiff, setRefreshDiff] = useState(null); // { added, removed, changed }
+  const [refreshDiff, setRefreshDiff] = useState(null);
+  const [tourOpen, setTourOpen] = useState(false);
 
   const nodeTypes = useMemo(() => ({ custom: CustomNode, annotation: AnnotationNode }), []);
 
@@ -1447,6 +1449,16 @@ const Flow = () => {
           >
             <Download size={20} />
           </button>
+
+          {/* Tour Mode (Temporarily disabled) 
+          <button
+            onClick={() => setTourOpen(true)}
+            title="Tour Mode"
+            style={{ ...bottomButtonStyle, opacity: tourOpen ? 1 : 0.6 }}
+          >
+            <Compass size={20} />
+          </button>
+          */}
         </div>
       )
       }
@@ -1668,6 +1680,28 @@ const Flow = () => {
         }}
       />
 
+      {/* Tour Mode (Temporarily disabled) 
+      <TourMode
+        nodes={nodes}
+        edges={edges}
+        isOpen={tourOpen}
+        onClose={() => setTourOpen(false)}
+        theme={theme}
+        onFocusNode={(nodeIds, isGroup) => {
+          if (rfInstance && nodeIds.length > 0) {
+            const fitNodes = nodeIds.map(id => ({ id }));
+            rfInstance.fitView({ nodes: fitNodes, duration: 500, padding: isGroup ? 0.3 : 0.5 });
+            if (!isGroup && nodeIds.length === 1) {
+              const targetNode = nodes.find(n => n.id === nodeIds[0]);
+              if (targetNode) {
+                setNodes(nds => nds.map(n => ({ ...n, selected: n.id === nodeIds[0] })));
+                setSelectedNode(targetNode.data);
+              }
+            }
+          }
+        }}
+      />
+      */}
       {/* Config List Modal */}
       {
         configListModalOpen && (

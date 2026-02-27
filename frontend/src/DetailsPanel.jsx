@@ -550,6 +550,32 @@ const DetailsPanel = ({
                                         <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Dataset</div>
                                         <div style={{ fontSize: '14px', color: 'var(--text-primary)', marginTop: '4px' }}>{node.details?.dataset || '-'}</div>
                                     </div>
+                                    {node.details?.last_modified_days != null && (
+                                        <div>
+                                            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Last Modified</div>
+                                            <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>
+                                                    {node.details.last_modified_days === 0 ? 'Today' : `${node.details.last_modified_days}d ago`}
+                                                </span>
+                                                {node.details.last_modified_days > 90 && (
+                                                    <span style={{
+                                                        fontSize: '9px', fontWeight: 700,
+                                                        background: 'rgba(239, 68, 68, 0.12)',
+                                                        color: '#ef4444',
+                                                        padding: '2px 6px', borderRadius: '4px',
+                                                    }}>Stale</span>
+                                                )}
+                                                {node.details.last_modified_days > 30 && node.details.last_modified_days <= 90 && (
+                                                    <span style={{
+                                                        fontSize: '9px', fontWeight: 700,
+                                                        background: 'rgba(251, 191, 36, 0.12)',
+                                                        color: '#fbbf24',
+                                                        padding: '2px 6px', borderRadius: '4px',
+                                                    }}>Aging</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Description (from SQL header comments or manual) */}

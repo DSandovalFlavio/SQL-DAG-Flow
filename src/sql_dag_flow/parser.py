@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import sqlglot
 from sqlglot import exp
 import networkx as nx
@@ -368,6 +369,13 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                         desc_lines = [l for l in header_lines if not l.startswith('@') and l.strip()]
                         if desc_lines:
                             header_meta['description'] = ' '.join(desc_lines[:3])
+                    # ===== File Modification Timestamp =====
+                    try:
+                        mtime = os.path.getmtime(filepath)
+                        days_ago = int((time.time() - mtime) / 86400)
+                    except Exception:
+                        mtime = None
+                        days_ago = None
                              
                     tables[filename_base] = { 
                         "id": filename_base,
@@ -384,7 +392,8 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                         "business_rules": business_rules,
                         "complexity": complexity_breakdown,
                         "column_references": column_references,
-                        "header_meta": header_meta
+                        "header_meta": header_meta,
+                        "last_modified_days": days_ago
                     }
                 except Exception as e:
                     print(f"Error parsing {filepath}: {e}")
