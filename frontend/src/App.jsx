@@ -110,47 +110,60 @@ const Flow = () => {
 
     let newNodes = [...nodes];
 
-    if (direction === 'horizontal') {
-      // Align to same Y → horizontal row
-      const avgY = selectedNodes.reduce((acc, n) => acc + n.position.y, 0) / selectedNodes.length;
-      newNodes = newNodes.map((n) => {
-        if (n.selected) return { ...n, position: { ...n.position, y: avgY } };
-        return n;
-      });
-    } else if (direction === 'vertical') {
-      // Align to same X → vertical column
+    if (direction === 'left') {
+      const minX = Math.min(...selectedNodes.map(n => n.position.x));
+      newNodes = newNodes.map(n => n.selected ? { ...n, position: { ...n.position, x: minX } } : n);
+    } else if (direction === 'right') {
+      const maxX = Math.max(...selectedNodes.map(n => n.position.x));
+      newNodes = newNodes.map(n => n.selected ? { ...n, position: { ...n.position, x: maxX } } : n);
+    } else if (direction === 'top') {
+      const minY = Math.min(...selectedNodes.map(n => n.position.y));
+      newNodes = newNodes.map(n => n.selected ? { ...n, position: { ...n.position, y: minY } } : n);
+    } else if (direction === 'bottom') {
+      const maxY = Math.max(...selectedNodes.map(n => n.position.y));
+      newNodes = newNodes.map(n => n.selected ? { ...n, position: { ...n.position, y: maxY } } : n);
+    } else if (direction === 'centerH' || direction === 'horizontal') {
       const avgX = selectedNodes.reduce((acc, n) => acc + n.position.x, 0) / selectedNodes.length;
-      newNodes = newNodes.map((n) => {
-        if (n.selected) return { ...n, position: { ...n.position, x: avgX } };
-        return n;
-      });
+      newNodes = newNodes.map(n => n.selected ? { ...n, position: { ...n.position, x: avgX } } : n);
+    } else if (direction === 'centerV' || direction === 'vertical') {
+      const avgY = selectedNodes.reduce((acc, n) => acc + n.position.y, 0) / selectedNodes.length;
+      newNodes = newNodes.map(n => n.selected ? { ...n, position: { ...n.position, y: avgY } } : n);
     } else if (direction === 'distributeH') {
-      // Evenly distribute along X axis
       const sorted = [...selectedNodes].sort((a, b) => a.position.x - b.position.x);
       const minX = sorted[0].position.x;
       const maxX = sorted[sorted.length - 1].position.x;
       const step = sorted.length > 1 ? (maxX - minX) / (sorted.length - 1) : 0;
       const posMap = {};
       sorted.forEach((n, i) => { posMap[n.id] = minX + step * i; });
-      newNodes = newNodes.map((n) => n.selected ? { ...n, position: { ...n.position, x: posMap[n.id] } } : n);
+      newNodes = newNodes.map(n => n.selected ? { ...n, position: { ...n.position, x: posMap[n.id] } } : n);
     } else if (direction === 'distributeV') {
-      // Evenly distribute along Y axis
       const sorted = [...selectedNodes].sort((a, b) => a.position.y - b.position.y);
       const minY = sorted[0].position.y;
       const maxY = sorted[sorted.length - 1].position.y;
       const step = sorted.length > 1 ? (maxY - minY) / (sorted.length - 1) : 0;
       const posMap = {};
       sorted.forEach((n, i) => { posMap[n.id] = minY + step * i; });
-      newNodes = newNodes.map((n) => n.selected ? { ...n, position: { ...n.position, y: posMap[n.id] } } : n);
-    } else if (direction === 'compact') {
-      // Tighten spacing: move nodes 50% closer to center
+      newNodes = newNodes.map(n => n.selected ? { ...n, position: { ...n.position, y: posMap[n.id] } } : n);
+    } else if (direction === 'compactH') {
       const avgX = selectedNodes.reduce((a, n) => a + n.position.x, 0) / selectedNodes.length;
-      const avgY = selectedNodes.reduce((a, n) => a + n.position.y, 0) / selectedNodes.length;
-      newNodes = newNodes.map((n) => {
+      newNodes = newNodes.map(n => {
         if (!n.selected) return n;
         const dx = n.position.x - avgX;
+        return { ...n, position: { x: avgX + dx * 0.5, y: n.position.y } };
+      });
+    } else if (direction === 'compactV') {
+      const avgY = selectedNodes.reduce((a, n) => a + n.position.y, 0) / selectedNodes.length;
+      newNodes = newNodes.map(n => {
+        if (!n.selected) return n;
         const dy = n.position.y - avgY;
-        return { ...n, position: { x: avgX + dx * 0.5, y: avgY + dy * 0.5 } };
+        return { ...n, position: { x: n.position.x, y: avgY + dy * 0.5 } };
+      });
+    } else if (direction === 'compact') {
+      const avgX = selectedNodes.reduce((a, n) => a + n.position.x, 0) / selectedNodes.length;
+      const avgY = selectedNodes.reduce((a, n) => a + n.position.y, 0) / selectedNodes.length;
+      newNodes = newNodes.map(n => {
+        if (!n.selected) return n;
+        return { ...n, position: { x: avgX + (n.position.x - avgX) * 0.5, y: avgY + (n.position.y - avgY) * 0.5 } };
       });
     }
     setNodes(newNodes);
@@ -553,7 +566,7 @@ const Flow = () => {
     // eslint-disable-next-line
   }, []);
 
-  const refreshGraphData = async (subfolders = null, modeOverride = null) => {
+  const refreshGraphData = async (subfolders = null, modeOverride = null, clearAnnotations = false) => {
     // Mode override allows immediate refresh with new state before re-render
     const currentMode = modeOverride !== null ? modeOverride : discoveryMode;
 
@@ -612,7 +625,7 @@ const Flow = () => {
     // Actually, the user complaint is "ignora todo y vuelve al inicio". 
     // So avoiding getLayoutedElements on refresh is key if we want to keep manual moves.
 
-    let finalNodes = [...styledNodes, ...nodes.filter(n => n.type === 'annotation')];
+    let finalNodes = clearAnnotations ? [...styledNodes] : [...styledNodes, ...nodes.filter(n => n.type === 'annotation')];
     let finalEdges = data.edges;
 
     // Only run auto-layout if we really strictly need it (empty start)
@@ -795,8 +808,8 @@ const Flow = () => {
       setNodes([]);
       setEdges([]);
       setHiddenNodeIds([]);
-      // Try to load state or refresh
-      await refreshGraphData(subfolders);
+      // Clean canvas on project switch — don't carry over annotations
+      await refreshGraphData(subfolders, null, true);
     } else {
       alert("Error setting path");
     }

@@ -25,9 +25,9 @@ const CustomNode = ({ id, data }) => {
         const palette = data.palette || 'standard';
 
         const colors = {
-            standard: { bronze: '#8B4513', silver: '#708090', gold: '#DAA520', external: '#D35400', cte: '#E91E63', other: '#4CA1AF', default: '#2F4F4F' },
-            vivid: { bronze: '#FF5722', silver: '#29B6F6', gold: '#FFEB3B', external: '#FF9800', cte: '#F50057', other: '#00BCD4', default: '#9C27B0' },
-            pastel: { bronze: '#D7CCC8', silver: '#CFD8DC', gold: '#FFF9C4', external: '#FFE0B2', cte: '#F8BBD0', other: '#B2EBF2', default: '#E1BEE7' },
+            standard: { bronze: '#8B4513', silver: '#708090', gold: '#DAA520', external: '#C06430', cte: '#E91E63', other: '#4CA1AF', default: '#2F4F4F' },
+            vivid: { bronze: '#D4654A', silver: '#4A9CC7', gold: '#E09E3A', external: '#D47A3A', cte: '#C45B8C', other: '#3A9E98', default: '#7B6DB5' },
+            pastel: { bronze: '#DCC1B0', silver: '#B8C5D0', gold: '#F0E4B8', external: '#E8D0A8', cte: '#DAAFC0', other: '#A8D0D8', default: '#C8B8D8' },
             linear: { bronze: '#B08968', silver: '#8E99A4', gold: '#D4A843', external: '#CC8B5E', cte: '#C77092', other: '#6B9DAD', default: '#7A8B8B' }
         };
 

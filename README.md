@@ -89,12 +89,12 @@ SQL DAG Flow uses distinct colors to identify node types. You can switch between
 
 | Node Type | Layer / Meaning | Standard | Vivid | Pastel | Linear |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Bronze** | Raw Ingestion | 🟤 Brown (`#8B4513`) | 🟠 Orange (`#FF5722`) | 🟤 Pale Brown (`#D7CCC8`) | 🟤 Muted (`#B08968`) |
-| **Silver** | Cleaned / Conformed | ⚪ Gray (`#708090`) | 🔵 Blue (`#29B6F6`) | ⚪ Blue Grey (`#CFD8DC`) | ⚪ Slate (`#8E99A4`) |
-| **Gold** | Business Aggregates | 🟡 Gold (`#DAA520`) | 🟡 Yellow (`#FFEB3B`) | 🟡 Pale Yellow (`#FFF9C4`) | 🟡 Warm (`#D4A843`) |
-| **External** | Missing / Ghost Node | 🟠 Dark Orange (`#D35400`) | 🟠 Neon Orange (`#FF9800`) | 🟠 Peach (`#FFE0B2`) | 🟠 Sand (`#CC8B5E`) |
-| **CTE** | Internal Common Table Expression | 💖 Pink (`#E91E63`) | 💗 Deep Pink (`#F50057`) | 🌸 Light Pink (`#F8BBD0`) | 💜 Mauve (`#C77092`) |
-| **Other** | Uncategorized | 🔵 Teal (`#4CA1AF`) | 💠 Cyan (`#00BCD4`) | 🧊 Pale Cyan (`#B2EBF2`) | 🔵 Ocean (`#6B9DAD`) |
+| **Bronze** | Raw Ingestion | 🟤 Brown (`#8B4513`) | 🟠 Warm (`#E8734A`) | 🟤 Sand (`#DCC1B0`) | 🟤 Muted (`#B08968`) |
+| **Silver** | Cleaned / Conformed | ⚪ Gray (`#708090`) | 🔵 Ocean (`#5CA8D3`) | ⚪ Fog (`#B8C5D0`) | ⚪ Slate (`#8E99A4`) |
+| **Gold** | Business Aggregates | 🟡 Gold (`#DAA520`) | 🟡 Amber (`#F0C75E`) | 🟡 Cream (`#F0E4B8`) | 🟡 Warm (`#D4A843`) |
+| **External** | Missing / Ghost Node | 🟠 Rust (`#C06430`) | 🟠 Spice (`#E8943A`) | 🟠 Peach (`#E8D0A8`) | 🟠 Sand (`#CC8B5E`) |
+| **CTE** | Internal Common Table Expression | 💖 Pink (`#E91E63`) | 💜 Rose (`#D45B8C`) | 🌸 Blush (`#DAAFC0`) | 💜 Mauve (`#C77092`) |
+| **Other** | Uncategorized | 🔵 Teal (`#4CA1AF`) | 💠 Aqua (`#4AABB8`) | 🧊 Mist (`#A8D0D8`) | 🔵 Ocean (`#6B9DAD`) |
 
 ---
 

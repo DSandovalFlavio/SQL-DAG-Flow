@@ -9,67 +9,68 @@
    DARK THEME (Default)
    Inspired by Linear's "profound and neutral" dark theme
    ===================================================================== */
-:root, [data-theme="dark"] {
+:root,
+[data-theme="dark"] {
   /* Surfaces — Subtle elevation through background lightness */
-  --surface-primary:      #0d0d0d;
-  --surface-secondary:    #141414;
-  --surface-elevated:     #1c1c1c;
-  --surface-inset:        #0a0a0a;
-  --surface-overlay:      rgba(0, 0, 0, 0.6);
-  --surface-tooltip:      rgba(22, 22, 22, 0.95);
+  --surface-primary: #0d0d0d;
+  --surface-secondary: #141414;
+  --surface-elevated: #1c1c1c;
+  --surface-inset: #0a0a0a;
+  --surface-overlay: rgba(0, 0, 0, 0.6);
+  --surface-tooltip: rgba(22, 22, 22, 0.95);
 
   /* Text — Warm whites, not pure #fff */
-  --text-primary:         #e8e8e6;
-  --text-secondary:       #8b8b8b;
-  --text-tertiary:        #5a5a5a;
-  --text-inverse:         #0d0d0d;
-  --text-accent:          #8d9eff;
+  --text-primary: #e8e8e6;
+  --text-secondary: #8b8b8b;
+  --text-tertiary: #5a5a5a;
+  --text-inverse: #0d0d0d;
+  --text-accent: #8d9eff;
 
   /* Borders — Subtle, using rgba for transparency layering */
-  --border-default:       rgba(255, 255, 255, 0.06);
-  --border-emphasis:      rgba(255, 255, 255, 0.12);
-  --border-strong:        rgba(255, 255, 255, 0.20);
+  --border-default: rgba(255, 255, 255, 0.06);
+  --border-emphasis: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.20);
 
   /* Interactive States */
-  --interactive-hover:    rgba(255, 255, 255, 0.04);
-  --interactive-active:   rgba(255, 255, 255, 0.08);
+  --interactive-hover: rgba(255, 255, 255, 0.04);
+  --interactive-active: rgba(255, 255, 255, 0.08);
   --interactive-selected: rgba(255, 255, 255, 0.06);
 
   /* Accent — Shifted to a violet-indigo for a more premium feel */
-  --accent-primary:       #7c6aef;
-  --accent-hover:         #8d7df5;
-  --accent-muted:         rgba(124, 106, 239, 0.15);
-  --accent-text:          #a99eff;
+  --accent-primary: #7c6aef;
+  --accent-hover: #8d7df5;
+  --accent-muted: rgba(124, 106, 239, 0.15);
+  --accent-text: #a99eff;
 
   /* Shadows — Deeper for dark backgrounds */
-  --shadow-sm:    0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.15);
-  --shadow-md:    0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.2);
-  --shadow-lg:    0 12px 40px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.3);
-  --shadow-xl:    0 20px 60px rgba(0, 0, 0, 0.6), 0 8px 20px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.15);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.6), 0 8px 20px rgba(0, 0, 0, 0.35);
 
   /* Canvas (React Flow specific) */
-  --canvas-bg:            #0d0d0d;
-  --canvas-dots:          #1a1a1a;
+  --canvas-bg: #0d0d0d;
+  --canvas-dots: #1a1a1a;
 
   /* Edge Colors */
-  --edge-default:         #444;
-  --edge-incoming:        #4dc9f6;
-  --edge-outgoing:        #f67280;
-  --edge-lineage:         #9d7aff;
-  --edge-dimmed:          #333;
+  --edge-default: #7e7e7e;
+  --edge-incoming: #4dc9f6;
+  --edge-outgoing: #f67280;
+  --edge-lineage: #9d7aff;
+  --edge-dimmed: #333;
 
   /* Status Colors (functional, kept vibrant for readability) */
-  --status-success:       #34d399;
-  --status-warning:       #fbbf24;
-  --status-error:         #f87171;
-  --status-info:          #60a5fa;
+  --status-success: #34d399;
+  --status-warning: #fbbf24;
+  --status-error: #f87171;
+  --status-info: #60a5fa;
 
   /* Minimap */
-  --minimap-bg:           #141414;
+  --minimap-bg: #141414;
 
   /* Scrollbar */
-  --scrollbar-thumb:      rgba(255, 255, 255, 0.1);
-  --scrollbar-track:      transparent;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.1);
+  --scrollbar-track: transparent;
 }
 
 /* =====================================================================
@@ -78,110 +79,110 @@
    ===================================================================== */
 [data-theme="light"] {
   /* Surfaces — Warm off-whites, never pure #fff for backgrounds */
-  --surface-primary:      #f7f6f3;
-  --surface-secondary:    #efeeeb;
-  --surface-elevated:     #ffffff;
-  --surface-inset:        #eae9e6;
-  --surface-overlay:      rgba(0, 0, 0, 0.4);
-  --surface-tooltip:      rgba(255, 255, 255, 0.97);
+  --surface-primary: #f7f6f3;
+  --surface-secondary: #efeeeb;
+  --surface-elevated: #ffffff;
+  --surface-inset: #eae9e6;
+  --surface-overlay: rgba(0, 0, 0, 0.4);
+  --surface-tooltip: rgba(255, 255, 255, 0.97);
 
   /* Text — Deep blacks for strong contrast */
-  --text-primary:         #1a1a1a;
-  --text-secondary:       #5c5c5c;
-  --text-tertiary:        #8a8a8a;
-  --text-inverse:         #f7f6f3;
-  --text-accent:          #5b4cc4;
+  --text-primary: #1a1a1a;
+  --text-secondary: #5c5c5c;
+  --text-tertiary: #8a8a8a;
+  --text-inverse: #f7f6f3;
+  --text-accent: #5b4cc4;
 
   /* Borders */
-  --border-default:       rgba(0, 0, 0, 0.06);
-  --border-emphasis:      rgba(0, 0, 0, 0.10);
-  --border-strong:        rgba(0, 0, 0, 0.18);
+  --border-default: rgba(0, 0, 0, 0.06);
+  --border-emphasis: rgba(0, 0, 0, 0.10);
+  --border-strong: rgba(0, 0, 0, 0.18);
 
   /* Interactive States */
-  --interactive-hover:    rgba(0, 0, 0, 0.03);
-  --interactive-active:   rgba(0, 0, 0, 0.06);
+  --interactive-hover: rgba(0, 0, 0, 0.03);
+  --interactive-active: rgba(0, 0, 0, 0.06);
   --interactive-selected: rgba(0, 0, 0, 0.04);
 
   /* Accent — Slightly darker violet for light backgrounds */
-  --accent-primary:       #6c5ce7;
-  --accent-hover:         #5a4bd6;
-  --accent-muted:         rgba(108, 92, 231, 0.10);
-  --accent-text:          #5b4cc4;
+  --accent-primary: #6c5ce7;
+  --accent-hover: #5a4bd6;
+  --accent-muted: rgba(108, 92, 231, 0.10);
+  --accent-text: #5b4cc4;
 
   /* Shadows — Softer for light backgrounds */
-  --shadow-sm:    0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-md:    0 4px 12px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
-  --shadow-lg:    0 12px 40px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04);
-  --shadow-xl:    0 20px 60px rgba(0, 0, 0, 0.10), 0 8px 20px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.10), 0 8px 20px rgba(0, 0, 0, 0.05);
 
   /* Canvas */
-  --canvas-bg:            #f7f6f3;
-  --canvas-dots:          #ddd;
+  --canvas-bg: #f7f6f3;
+  --canvas-dots: #ddd;
 
   /* Edge Colors */
-  --edge-default:         #b0b0b0;
-  --edge-incoming:        #0077b6;
-  --edge-outgoing:        #c9184a;
-  --edge-lineage:         #7b2cbf;
-  --edge-dimmed:          #ccc;
+  --edge-default: #8a8a8a;
+  --edge-incoming: #0077b6;
+  --edge-outgoing: #c9184a;
+  --edge-lineage: #7b2cbf;
+  --edge-dimmed: #ccc;
 
   /* Status Colors */
-  --status-success:       #059669;
-  --status-warning:       #d97706;
-  --status-error:         #dc2626;
-  --status-info:          #2563eb;
+  --status-success: #059669;
+  --status-warning: #d97706;
+  --status-error: #dc2626;
+  --status-info: #2563eb;
 
   /* Minimap */
-  --minimap-bg:           #efeeeb;
+  --minimap-bg: #efeeeb;
 
   /* Scrollbar */
-  --scrollbar-thumb:      rgba(0, 0, 0, 0.12);
-  --scrollbar-track:      transparent;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.12);
+  --scrollbar-track: transparent;
 }
 
 /* =====================================================================
    LAYER PALETTE: Linear (New palette inspired by Linear's LCH approach)
    ===================================================================== */
 :root {
-  /* Standard palette (existing) */
-  --layer-bronze-standard:   #8B4513;
-  --layer-silver-standard:   #708090;
-  --layer-gold-standard:     #DAA520;
-  --layer-external-standard: #D35400;
-  --layer-cte-standard:      #E91E63;
-  --layer-other-standard:    #4CA1AF;
+  /* Standard palette */
+  --layer-bronze-standard: #8B4513;
+  --layer-silver-standard: #708090;
+  --layer-gold-standard: #DAA520;
+  --layer-external-standard: #C06430;
+  --layer-cte-standard: #E91E63;
+  --layer-other-standard: #4CA1AF;
 
-  /* Vivid palette (existing) */
-  --layer-bronze-vivid:      #FF5722;
-  --layer-silver-vivid:      #29B6F6;
-  --layer-gold-vivid:        #FFEB3B;
-  --layer-external-vivid:    #FF9800;
-  --layer-cte-vivid:         #F50057;
-  --layer-other-vivid:       #00BCD4;
+  /* Vivid palette (rich warm tones) */
+  --layer-bronze-vivid: #D4654A;
+  --layer-silver-vivid: #4A9CC7;
+  --layer-gold-vivid: #E09E3A;
+  --layer-external-vivid: #D47A3A;
+  --layer-cte-vivid: #C45B8C;
+  --layer-other-vivid: #3A9E98;
 
-  /* Pastel palette (existing) */
-  --layer-bronze-pastel:     #D7CCC8;
-  --layer-silver-pastel:     #CFD8DC;
-  --layer-gold-pastel:       #FFF9C4;
-  --layer-external-pastel:   #FFE0B2;
-  --layer-cte-pastel:        #F8BBD0;
-  --layer-other-pastel:      #B2EBF2;
+  /* Soft palette (warm muted tones) */
+  --layer-bronze-pastel: #DCC1B0;
+  --layer-silver-pastel: #B8C5D0;
+  --layer-gold-pastel: #F0E4B8;
+  --layer-external-pastel: #E8D0A8;
+  --layer-cte-pastel: #DAAFC0;
+  --layer-other-pastel: #A8D0D8;
 
   /* Linear palette (NEW — LCH-inspired muted, sophisticated tones) */
-  --layer-bronze-linear:     #B08968;
-  --layer-silver-linear:     #8E99A4;
-  --layer-gold-linear:       #D4A843;
-  --layer-external-linear:   #CC8B5E;
-  --layer-cte-linear:        #C77092;
-  --layer-other-linear:      #6B9DAD;
+  --layer-bronze-linear: #B08968;
+  --layer-silver-linear: #8E99A4;
+  --layer-gold-linear: #D4A843;
+  --layer-external-linear: #CC8B5E;
+  --layer-cte-linear: #C77092;
+  --layer-other-linear: #6B9DAD;
 
   /* Layer indicator dots (sidebar/minimap, unchanged) */
-  --layer-dot-bronze:        #cd7f32;
-  --layer-dot-silver:        #708090;
-  --layer-dot-gold:          #FFD700;
-  --layer-dot-external:      #ff9f1c;
-  --layer-dot-cte:           #E91E63;
-  --layer-dot-other:         #4CA1AF;
+  --layer-dot-bronze: #cd7f32;
+  --layer-dot-silver: #708090;
+  --layer-dot-gold: #FFD700;
+  --layer-dot-external: #ff9f1c;
+  --layer-dot-cte: #E91E63;
+  --layer-dot-other: #4CA1AF;
 }
 
 /* =====================================================================
@@ -237,9 +238,9 @@ code {
 /* Transition helpers */
 .transition-colors {
   transition: background-color 0.2s cubic-bezier(0.25, 0.1, 0.25, 1),
-              color 0.2s cubic-bezier(0.25, 0.1, 0.25, 1),
-              border-color 0.2s cubic-bezier(0.25, 0.1, 0.25, 1),
-              box-shadow 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
+    color 0.2s cubic-bezier(0.25, 0.1, 0.25, 1),
+    border-color 0.2s cubic-bezier(0.25, 0.1, 0.25, 1),
+    box-shadow 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 /* Sidebar hover items */
@@ -249,11 +250,25 @@ code {
 
 /* Fade-in animation */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes slideUp {
-  from { opacity: 0; transform: translate(-50%, 8px); }
-  to { opacity: 1; transform: translate(-50%, 0); }
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }
