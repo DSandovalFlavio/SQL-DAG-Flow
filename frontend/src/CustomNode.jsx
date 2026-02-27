@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { Handle, Position, NodeToolbar } from '@xyflow/react';
-import { Database, Table, FileText, Layers, Eye, Globe, EyeOff, FolderMinus, ScanEye, MousePointerClick } from 'lucide-react';
+import { Database, Table, FileText, Layers, Eye, Globe, EyeOff, FolderMinus, ScanEye, MousePointerClick, Maximize2, Minimize2 } from 'lucide-react';
 
 const CustomNode = ({ id, data }) => {
     const { label, layer, details, theme = 'dark', styleMode = 'full', onContextMenu } = data;
@@ -226,6 +226,23 @@ const CustomNode = ({ id, data }) => {
                             onClick={() => data.onAction('selectTree', data.id)}
                             isDark={isDark}
                         />
+
+                        {/* Expand / Collapse */}
+                        {data.expandedNodes && data.expandedNodes.includes(data.id) ? (
+                            <ToolbarButton
+                                icon={<Minimize2 size={14} />}
+                                label="Collapse"
+                                onClick={() => data.onAction('collapse', data.id)}
+                                isDark={isDark}
+                            />
+                        ) : (
+                            <ToolbarButton
+                                icon={<Maximize2 size={14} />}
+                                label="Expand"
+                                onClick={() => data.onAction('expand', data.id)}
+                                isDark={isDark}
+                            />
+                        )}
                     </div>
                 </div>
             )}
@@ -238,6 +255,33 @@ const CustomNode = ({ id, data }) => {
                 }
                 `}
             </style>
+
+            {/* Tag Badge */}
+            {data.tag && data.showTags !== false && (
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-10px',
+                    left: '8px',
+                    background: isDark ? 'var(--surface-tooltip)' : 'var(--surface-elevated)',
+                    backdropFilter: 'blur(8px)',
+                    color: styleMode === 'full' ? 'var(--text-primary)' : color,
+                    fontSize: '8px',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    border: `1px solid ${styleMode === 'full' ? 'rgba(255,255,255,0.15)' : `${color}40`}`,
+                    letterSpacing: '0.03em',
+                    maxWidth: '120px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    boxShadow: 'var(--shadow-sm)',
+                    zIndex: 3,
+                    textTransform: 'uppercase',
+                }}>
+                    {data.tag}
+                </div>
+            )}
 
             <Handle type="source" position={Position.Right} style={{ background: 'var(--text-secondary)', width: 8, height: 8, border: '2px solid var(--surface-primary)' }} />
         </div>

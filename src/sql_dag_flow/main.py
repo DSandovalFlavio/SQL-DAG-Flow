@@ -10,6 +10,8 @@ import json
 import webbrowser
 import threading
 import time
+import socket
+import argparse
 import shutil
 from .parser import parse_sql_files, build_graph
 
@@ -34,13 +36,14 @@ CURRENT_DIRECTORY = os.getcwd() # Default, updated by start()
 DIAGRAM_FILE = "sql_diagram.json"
 
 @app.get("/graph")
-def get_graph(dialect: str = "bigquery", discovery: bool = False):
+def get_graph(dialect: str = "bigquery", discovery: bool = False, expanded_nodes: str = ""):
     """Parses SQL files in the current directory and returns graph data."""
     if not os.path.exists(CURRENT_DIRECTORY):
         return {"nodes": [], "edges": [], "error": "Directory not found"}
         
+    exp_nodes_list = [n.strip() for n in expanded_nodes.split(",")] if expanded_nodes else []
     tables = parse_sql_files(CURRENT_DIRECTORY, dialect=dialect)
-    nodes, edges = build_graph(tables, discovery_mode=discovery)
+    nodes, edges = build_graph(tables, discovery_mode=discovery, expanded_nodes=exp_nodes_list)
     return {"nodes": nodes, "edges": edges}
 
 @app.post("/config/path")
@@ -93,9 +96,10 @@ def get_filtered_graph(data: dict = Body(...)):
     subfolders = data.get("subfolders") # List of strings or None
     dialect = data.get("dialect", "bigquery")
     discovery = data.get("discovery", False)
+    expanded_nodes = data.get("expanded_nodes", [])
     
     tables = parse_sql_files(CURRENT_DIRECTORY, allowed_subfolders=subfolders, dialect=dialect)
-    nodes, edges = build_graph(tables, discovery_mode=discovery)
+    nodes, edges = build_graph(tables, discovery_mode=discovery, expanded_nodes=expanded_nodes)
     return {"nodes": nodes, "edges": edges}
 
 @app.get("/config/path")
@@ -257,31 +261,72 @@ if os.path.exists(STATIC_DIR):
         response.headers["Expires"] = "0"
         return response
 
+def _is_port_available(port):
+    """Check if a port is available by attempting to bind to it."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(('127.0.0.1', port))
+            return True
+        except OSError:
+            return False
+
+def _find_available_port(start_port, max_attempts=10):
+    """Find an available port starting from start_port."""
+    for offset in range(max_attempts):
+        port = start_port + offset
+        if _is_port_available(port):
+            return port
+    return None
+
 def start():
     """Entry point for the CLI tool."""
     global CURRENT_DIRECTORY
     
-    # CLI Argument Parsing
-    if len(sys.argv) > 1:
-        path_arg = sys.argv[1]
-        if os.path.exists(path_arg):
-            CURRENT_DIRECTORY = os.path.abspath(path_arg)
+    # CLI Argument Parsing with argparse
+    parser = argparse.ArgumentParser(
+        prog='sql-dag-flow',
+        description='SQL DAG Flow - Medallion Architecture Visualizer'
+    )
+    parser.add_argument('path', nargs='?', default=None, help='Path to SQL project folder')
+    parser.add_argument('--port', '-p', type=int, default=8000, help='Port to run the server on (default: 8000)')
+    
+    # Use parse_known_args to be tolerant of unexpected args
+    args, unknown = parser.parse_known_args()
+    
+    if args.path:
+        # Normalize the path (handles backslashes on Windows, trailing separators, etc.)
+        normalized_path = os.path.normpath(os.path.abspath(args.path))
+        if os.path.exists(normalized_path) and os.path.isdir(normalized_path):
+            CURRENT_DIRECTORY = normalized_path
             print(f"Setting project path from CLI: {CURRENT_DIRECTORY}")
         else:
-            print(f"Warning: Path '{path_arg}' does not exist. Using defaults.")
+            print(f"Warning: Path '{args.path}' does not exist or is not a directory. Using current directory.")
+            CURRENT_DIRECTORY = os.getcwd()
     else:
         CURRENT_DIRECTORY = os.getcwd()
         print(f"Using current directory: {CURRENT_DIRECTORY}")
 
+    # Find an available port
+    requested_port = args.port
+    port = _find_available_port(requested_port)
+    
+    if port is None:
+        print(f"Error: Could not find an available port (tried {requested_port}-{requested_port + 9}).")
+        sys.exit(1)
+    
+    if port != requested_port:
+        print(f"Port {requested_port} is in use. Using port {port} instead.")
+    else:
+        print(f"Starting server on port {port}")
+
     def open_browser():
         time.sleep(1.5)
-        webbrowser.open("http://localhost:8000")
+        webbrowser.open(f"http://localhost:{port}")
 
     threading.Thread(target=open_browser, daemon=True).start()
     
     # Run uvicorn programmatically
-    # Note: When running programmatically, reload=True is not supported easily without other hacks
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=port)
 
 if __name__ == "__main__":
     start()

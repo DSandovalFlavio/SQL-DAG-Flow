@@ -1,4 +1,7 @@
-export const API_URL = 'http://localhost:8000';
+// In production, frontend is served by FastAPI so origin works.
+// In development (Vite on 5173), we need to point to the backend port.
+const isDev = typeof window !== 'undefined' && window.location.port === '5173';
+export const API_URL = isDev ? 'http://localhost:8000' : (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000');
 
 // config can be an object { dialect: '...', discovery: true/false }
 export const fetchGraph = async (config = {}) => {
@@ -90,7 +93,7 @@ export const scanFolders = async (path) => {
 };
 
 // subfolders is array, dialect is string
-export const fetchFilteredGraph = async (subfolders, dialect = 'bigquery', discovery = false) => {
+export const fetchFilteredGraph = async (subfolders, dialect = 'bigquery', discovery = false, expanded_nodes = []) => {
     try {
         const response = await fetch(`${API_URL}/graph/filtered`, {
             method: 'POST',
@@ -100,7 +103,7 @@ export const fetchFilteredGraph = async (subfolders, dialect = 'bigquery', disco
                 'Pragma': 'no-cache',
                 'Expires': '0'
             },
-            body: JSON.stringify({ subfolders, dialect, discovery }),
+            body: JSON.stringify({ subfolders, dialect, discovery, expanded_nodes }),
         });
         return await response.json();
     } catch (error) {

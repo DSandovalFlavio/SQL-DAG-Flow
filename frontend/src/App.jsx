@@ -17,10 +17,12 @@ import {
   Menu, Layout,
   FolderOpen, FilePlus, Save, Image, Ruler,
   Moon, Sun, Eye, EyeOff, Grid, MessageSquare, BoxSelect, Settings,
-  Hand, MousePointer2, RefreshCw, Globe, BarChart3, Zap
+  Hand, MousePointer2, RefreshCw, Globe, BarChart3, Zap, Tag
 } from 'lucide-react';
 import SelectionToolbar from './SelectionToolbar';
 import LayerStats from './LayerStats';
+import CommandPalette from './CommandPalette';
+import ImpactAnalysis from './ImpactAnalysis';
 
 // Dagre layout function removed. Using ELK from ./algorithms/elk
 
@@ -32,6 +34,7 @@ const Flow = () => {
   const [palette, setPalette] = useState('standard');
   const [dialect, setDialect] = useState('bigquery');
   const [discoveryMode, setDiscoveryMode] = useState(false);
+  const [expandedNodes, setExpandedNodes] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
   const [lineageNodes, setLineageNodes] = useState(null); // Set form to highlight full lineage edges
   const [detailsNode, setDetailsNode] = useState(null); // Separate state for side panel
@@ -67,7 +70,10 @@ const Flow = () => {
   const [visibleLayers, setVisibleLayers] = useState({ bronze: true, silver: true, gold: true, external: true, cte: true, other: true });
   const [showCounts, setShowCounts] = useState(true);
   const [showComplexity, setShowComplexity] = useState(true);
+  const [showTags, setShowTags] = useState(true);
   const [showStats, setShowStats] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [impactNode, setImpactNode] = useState(null);
 
   const nodeTypes = useMemo(() => ({ custom: CustomNode, annotation: AnnotationNode }), []);
 
@@ -242,6 +248,12 @@ const Flow = () => {
           selected: fullLineage.has(n.id)
         })));
         break;
+      case 'expand':
+        setExpandedNodes(prev => [...new Set([...prev, nodeId])]);
+        break;
+      case 'collapse':
+        setExpandedNodes(prev => prev.filter(id => id !== nodeId));
+        break;
       default:
         break;
     }
@@ -291,6 +303,7 @@ const Flow = () => {
         if (data.metadata.palette) setPalette(data.metadata.palette);
         if (data.metadata.dialect) setDialect(data.metadata.dialect);
         if (data.metadata.discoveryMode !== undefined) setDiscoveryMode(data.metadata.discoveryMode);
+        if (data.metadata.expandedNodes) setExpandedNodes(data.metadata.expandedNodes);
         if (data.metadata.hiddenNodeIds) setHiddenNodeIds(data.metadata.hiddenNodeIds);
       }
       setCurrentConfigFile(filename); // Update current config file
@@ -362,6 +375,12 @@ const Flow = () => {
         setSidebarOpen(true);
         return;
       }
+      // Ctrl+P / Cmd+P = Command Palette
+      if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+        e.preventDefault();
+        setCommandPaletteOpen(true);
+        return;
+      }
       // Delete/Backspace = Hide selected nodes
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const selected = nodesRef.current.filter(n => n.selected);
@@ -420,6 +439,7 @@ const Flow = () => {
         if (newData.palette !== palette) { newData.palette = palette; changed = true; }
         if (newData.showCounts !== showCounts) { newData.showCounts = showCounts; changed = true; }
         if (newData.showComplexity !== showComplexity) { newData.showComplexity = showComplexity; changed = true; }
+        if (newData.showTags !== showTags) { newData.showTags = showTags; changed = true; }
         // functions usually stable but good to ensure
         newData.onContextMenu = onNodeContextMenu;
         newData.onAction = handleApplyAction;
@@ -440,7 +460,7 @@ const Flow = () => {
         return updatedNode;
       })
     );
-  }, [theme, nodeStyle, palette, visibleLayers, showCounts, showComplexity, hiddenNodeIds]);
+  }, [theme, nodeStyle, palette, visibleLayers, showCounts, showComplexity, showTags, hiddenNodeIds]);
 
   // 2. Update Edges (Selection Highlight)
   useEffect(() => {
@@ -546,7 +566,7 @@ const Flow = () => {
             onContextMenu: n.type === 'custom' ? onNodeContextMenu : undefined,
             onEdit: n.type === 'annotation' ? onEdit : undefined,
             onHide: n.type === 'custom' ? handleHideNode : undefined,
-            theme, styleMode: nodeStyle, palette, showCounts, showComplexity
+            theme, styleMode: nodeStyle, palette, showCounts, showComplexity, showTags
           }
         })));
         setEdges(savedState.edges || []);
@@ -557,6 +577,7 @@ const Flow = () => {
           setTitle(savedState.metadata.title || "SQL DAG Flow");
           setSubtitle(savedState.metadata.subtitle || "Medallion Architecture Visualizer");
           if (savedState.metadata.hiddenNodeIds) setHiddenNodeIds(savedState.metadata.hiddenNodeIds);
+          if (savedState.metadata.showTags !== undefined) setShowTags(savedState.metadata.showTags);
         }
       } else {
         await refreshGraphData();
@@ -566,44 +587,56 @@ const Flow = () => {
     // eslint-disable-next-line
   }, []);
 
-  const refreshGraphData = async (subfolders = null, modeOverride = null, clearAnnotations = false) => {
+  const refreshGraphData = async (subfolders = null, modeOverride = null, clearAnnotations = false, expandedNodesOverride = null) => {
     // Mode override allows immediate refresh with new state before re-render
     const currentMode = modeOverride !== null ? modeOverride : discoveryMode;
+    const currentExpanded = expandedNodesOverride !== null ? expandedNodesOverride : expandedNodes;
 
     // Use provided subfolders, or fall back to state, or null (all)
     const foldersToUse = subfolders !== null ? subfolders : selectedSubfolders;
 
     let data;
     if (foldersToUse) {
-      data = await fetchFilteredGraph(foldersToUse, dialect, currentMode);
+      data = await fetchFilteredGraph(foldersToUse, dialect, currentMode, currentExpanded);
     } else {
-      data = await fetchGraph({ dialect, discovery: currentMode });
+      data = await fetchGraph({ dialect, discovery: currentMode, expanded_nodes: currentExpanded.join(',') });
     }
 
     if (data.error) return;
 
-    // Capture current positions to preserve layout
+    // Capture current positions AND tags to preserve across refresh
     const currentPositions = {};
+    const currentTags = {};
     nodes.forEach(n => {
       currentPositions[n.id] = n.position;
+      if (n.data?.tag) currentTags[n.id] = n.data.tag;
     });
 
-    const styledNodes = data.nodes.map(node => ({
-      ...node,
-      type: 'custom',
-      position: currentPositions[node.id] || { x: 0, y: 0 }, // Preserve or default
-      data: {
-        ...node.data,
-        layer: node.data.layer || 'other',
-        theme,
-        styleMode: nodeStyle,
-        palette,
-        // Critical: Attach handlers here so they persist after refresh
-        onContextMenu: onNodeContextMenu,
-        onEdit: onEdit,
-        onAction: handleApplyAction
-      }
-    }));
+    const styledNodes = data.nodes.map(node => {
+      const isLayerVisible = visibleLayers[node.data.layer || 'other'];
+      const isManuallyHidden = hiddenNodeIds.includes(node.id);
+      return {
+        ...node,
+        type: 'custom',
+        hidden: !isLayerVisible || isManuallyHidden,
+        position: currentPositions[node.id] || { x: 0, y: 0 },
+        data: {
+          ...node.data,
+          layer: node.data.layer || 'other',
+          theme,
+          styleMode: nodeStyle,
+          palette,
+          showTags,
+          // Preserve user-assigned tags across refresh
+          tag: currentTags[node.id] || node.data.tag || null,
+          // Critical: Attach handlers here so they persist after refresh
+          onContextMenu: onNodeContextMenu,
+          onEdit: onEdit,
+          onAction: handleApplyAction,
+          expandedNodes: currentExpanded
+        }
+      };
+    });
 
     // If we have existing nodes and just refreshing data, we might want to avoid full auto-layout
     // But if new nodes appear, we need layout.
@@ -651,6 +684,14 @@ const Flow = () => {
     setEdges(finalEdges);
   };
 
+  const expandedNodesRef = useRef(expandedNodes);
+  useEffect(() => {
+    if (expandedNodesRef.current !== expandedNodes) {
+      expandedNodesRef.current = expandedNodes;
+      refreshGraphData(null, null, false, expandedNodes);
+    }
+  }, [expandedNodes]);
+
   // Save Handler (Save As)
   const handleSave = async () => {
     if (!rfInstance) return;
@@ -670,10 +711,12 @@ const Flow = () => {
         palette,
         dialect,
         discoveryMode,
+        expandedNodes,
         title,
         subtitle,
         path: currentPath,
-        hiddenNodeIds
+        hiddenNodeIds,
+        showTags
       },
       filename: filename // Pass filename to backend
     };
@@ -1211,6 +1254,10 @@ const Flow = () => {
             <Zap size={20} />
           </button>
 
+          <button onClick={() => setShowTags(!showTags)} title="Toggle Tags" style={{ ...bottomButtonStyle, opacity: showTags ? 1 : 0.5 }}>
+            <Tag size={20} />
+          </button>
+
           <div style={{ width: 1, height: 20, background: 'var(--border-emphasis)' }}></div>
 
           {/* Quick Filters (Layers) - Compact */}
@@ -1321,7 +1368,6 @@ const Flow = () => {
             onLayerChange={async (node, newLayer) => {
               try {
                 if (node.details?.path) {
-                  // Convert absolute path to relative for the backend
                   let filePath = node.details.path;
                   if (currentPath && filePath.startsWith(currentPath)) {
                     filePath = filePath.substring(currentPath.length);
@@ -1337,6 +1383,7 @@ const Flow = () => {
                 alert("Error moving file: " + error.message);
               }
             }}
+            onImpactAnalysis={(node) => setImpactNode(node)}
           />
         )
       }
@@ -1378,6 +1425,39 @@ const Flow = () => {
       {!isExporting && (
         <LayerStats nodes={nodes} edges={edges} theme={theme} isOpen={showStats} onClose={() => setShowStats(false)} />
       )}
+
+      {/* Command Palette (Cmd+P) */}
+      <CommandPalette
+        nodes={nodes}
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        theme={theme}
+        onSelectNode={(node) => {
+          // Pan and zoom to the selected node
+          if (rfInstance) {
+            rfInstance.fitView({ nodes: [{ id: node.id }], duration: 500, padding: 0.5 });
+          }
+          setSelectedNode(node.data);
+          setDetailsNode(node.data);
+        }}
+      />
+
+      {/* Impact Analysis Modal */}
+      <ImpactAnalysis
+        node={impactNode}
+        allNodes={nodes}
+        allEdges={edges}
+        isOpen={!!impactNode}
+        onClose={() => setImpactNode(null)}
+        theme={theme}
+        onFocusNode={(nodeId) => {
+          const targetNode = nodes.find(n => n.id === nodeId);
+          if (targetNode && rfInstance) {
+            rfInstance.fitView({ nodes: [{ id: nodeId }], duration: 500, padding: 0.5 });
+            setSelectedNode(targetNode.data);
+          }
+        }}
+      />
 
       {/* Config List Modal */}
       {
@@ -1443,9 +1523,17 @@ const Flow = () => {
           setDetailsNode(null); // Close details on left click
         }}
         onNodeDoubleClick={(event, node) => {
-          const fullLineage = getLineage(node.id);
-          setLineageNodes(fullLineage);
-          setSelectedNode(node.data); // Also set as active focus
+          if (node.type === 'annotation') {
+            // Double-click on annotation opens the edit panel
+            const nodeData = { ...node.data, id: node.id, type: 'annotation' };
+            setSelectedNode(nodeData);
+            setLineageNodes(null);
+            setDetailsNode(nodeData);
+          } else {
+            const fullLineage = getLineage(node.id);
+            setLineageNodes(fullLineage);
+            setSelectedNode(node.data); // Also set as active focus
+          }
         }}
         onNodeDragStop={() => pushUndo()}
         panOnDrag={selectionMode === 'pan'}

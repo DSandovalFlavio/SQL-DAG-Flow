@@ -312,6 +312,37 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                     )
                     
                     complexity_breakdown["score"] = complexity_score
+                    
+                    # ===== Column Reference Extraction =====
+                    # Extract which columns this model references from each source table
+                    # This enables downstream impact analysis
+                    column_references = {}  # source_table -> [columns]
+                    
+                    # Build alias -> table name mapping for the query
+                    alias_map = {}  # alias -> full_table_name
+                    for t in parsed.find_all(exp.Table):
+                        t_name = t.name
+                        t_full = t_name
+                        if t.db:
+                            t_full = f"{t.db}.{t_name}"
+                            if t.catalog:
+                                t_full = f"{t.catalog}.{t.db}.{t_name}"
+                        if t.alias:
+                            alias_map[t.alias] = t_full
+                        alias_map[t_name] = t_full
+                    
+                    # Extract column references with their table qualifier
+                    for col in parsed.find_all(exp.Column):
+                        col_name = col.name
+                        col_table = col.table  # The table qualifier (alias or name)
+                        if col_table and col_table in alias_map:
+                            source = alias_map[col_table]
+                            if source not in column_references:
+                                column_references[source] = set()
+                            column_references[source].add(col_name)
+                    
+                    # Convert sets to sorted lists for JSON serialization
+                    column_references = {k: sorted(list(v)) for k, v in column_references.items()}
                              
                     tables[filename_base] = { 
                         "id": filename_base,
@@ -326,7 +357,8 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                         "ctes": defined_ctes,
                         "cte_deps": cte_deps,
                         "business_rules": business_rules,
-                        "complexity": complexity_breakdown
+                        "complexity": complexity_breakdown,
+                        "column_references": column_references
                     }
                 except Exception as e:
                     print(f"Error parsing {filepath}: {e}")
@@ -346,11 +378,12 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
     return tables
 
 
-def build_graph(tables, discovery_mode=False):
+def build_graph(tables, discovery_mode=False, expanded_nodes=None):
     """
     Constructs nodes and edges for React Flow.
     If discovery_mode is True, creates 'ghost' nodes for dependencies 
     that are not found in the parsed tables.
+    Also creates ghost nodes for any node whose ID is in expanded_nodes list.
     """
     nodes = []
     edges = []
@@ -410,8 +443,8 @@ def build_graph(tables, discovery_mode=False):
                          cte_name = ":".join(parts[2:])
                          cte_internal_deps = tables[source_id].get("cte_deps", {}).get(cte_name, {})
                          
-                         if discovery_mode:
-                             # Discovery Mode: Create CTE ghost node with incoming edges
+                         if discovery_mode or (expanded_nodes and source_id in expanded_nodes):
+                             # Discovery Mode or Expanded: Create CTE ghost node with incoming edges
                              cte_id = dep
                              
                              if cte_id not in missing_nodes:
@@ -504,8 +537,8 @@ def build_graph(tables, discovery_mode=False):
                                          incoming_edges_count[source_id] = incoming_edges_count.get(source_id, 0) + 1
                      continue
 
-                 # Handle missing external nodes (discovery mode only)
-                 if discovery_mode and not target_id:
+                 # Handle missing external nodes (discovery mode or expanded node only)
+                 if (discovery_mode or (expanded_nodes and source_id in expanded_nodes)) and not target_id:
                          # Create a unique ID for the missing node
                          # Use the full dependency name as the ID
                          ghost_id = dep
@@ -555,24 +588,59 @@ def build_graph(tables, discovery_mode=False):
     for edge in edges:
         G.add_edge(edge["source"], edge["target"])
 
+    # ===== Compute Column Downstream Consumers =====
+    # For each node, figure out which downstream models reference its columns
+    # Result: column_consumers[node_id] = { "col_name": [{"node": consumer_id, "label": consumer_label}] }
+    column_consumers = {}
+    
+    for consumer_id, consumer_data in all_nodes_data.items():
+        col_refs = consumer_data.get("column_references", {})
+        for source_ref, columns in col_refs.items():
+            # Resolve source_ref to a node_id using lookup
+            source_node_id = lookup.get(source_ref)
+            if not source_node_id and "." in source_ref:
+                source_node_id = lookup.get(source_ref.split(".")[-1])
+            
+            if source_node_id and source_node_id in all_nodes_data:
+                if source_node_id not in column_consumers:
+                    column_consumers[source_node_id] = {}
+                for col in columns:
+                    if col not in column_consumers[source_node_id]:
+                        column_consumers[source_node_id][col] = []
+                    column_consumers[source_node_id][col].append({
+                        "node": consumer_id,
+                        "label": consumer_data.get("label", consumer_id)
+                    })
+
     for table_name, data in all_nodes_data.items():
         # Calculate nested dependencies (all ancestors in the dependency graph)
         nested_count = 0
         if G.has_node(table_name):
             try:
-                # ancestors() returns all nodes u such that there is a path from u to table_name
                 nested_count = len(nx.ancestors(G, table_name))
             except Exception:
-                pass # distinct graph parts or cycles? cycles shouldn't exist in DAG but safety first
+                pass
+        
+        # Get downstream impact count
+        downstream_count = 0
+        if G.has_node(table_name):
+            try:
+                downstream_count = len(nx.descendants(G, table_name))
+            except Exception:
+                pass
 
         nodes.append({
             "id": table_name,
             "data": {
                 "label": data["label"], 
                 "layer": data["layer"],
-                "details": data,
+                "details": {
+                    **data,
+                    "column_consumers": column_consumers.get(table_name, {})
+                },
                 "incomingCount": incoming_edges_count.get(table_name, 0),
-                "nestedCount": nested_count
+                "nestedCount": nested_count,
+                "downstreamCount": downstream_count
             },
             "position": {"x": 0, "y": 0}, 
             "type": "custom", 
