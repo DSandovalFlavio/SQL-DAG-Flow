@@ -25,6 +25,7 @@ import CommandPalette from './CommandPalette';
 import ImpactAnalysis from './ImpactAnalysis';
 import BreadcrumbTrail from './BreadcrumbTrail';
 import TourMode from './TourMode';
+import ComparisonPanel from './ComparisonPanel';
 
 // Dagre layout function removed. Using ELK from ./algorithms/elk
 
@@ -80,6 +81,7 @@ const Flow = () => {
   const [navHistory, setNavHistory] = useState([]);
   const [refreshDiff, setRefreshDiff] = useState(null);
   const [tourOpen, setTourOpen] = useState(false);
+  const [comparisonNodes, setComparisonNodes] = useState(null);
 
   const nodeTypes = useMemo(() => ({ custom: CustomNode, annotation: AnnotationNode }), []);
 
@@ -408,6 +410,7 @@ const Flow = () => {
       }
       // Escape = Deselect / Close panels
       if (e.key === 'Escape') {
+        if (comparisonNodes) { setComparisonNodes(null); return; }
         setSelectedNode(null);
         setLineageNodes(null);
         setDetailsNode(null);
@@ -1609,6 +1612,16 @@ const Flow = () => {
         )
       }
 
+      {/* Node Comparison Panel */}
+      {comparisonNodes && !isExporting && (
+        <ComparisonPanel
+          nodeA={comparisonNodes.nodeA}
+          nodeB={comparisonNodes.nodeB}
+          onClose={() => setComparisonNodes(null)}
+          theme={theme}
+        />
+      )}
+
       <SelectionToolbar
         selectedCount={nodes.filter(n => n.selected).length}
         onAlign={(dir) => { pushUndo(); alignNodes(dir); }}
@@ -1640,6 +1653,12 @@ const Flow = () => {
           }
         }}
         theme={theme}
+        onCompare={() => {
+          const selected = nodes.filter(n => n.selected && n.type === 'custom');
+          if (selected.length === 2) {
+            setComparisonNodes({ nodeA: selected[0].data, nodeB: selected[1].data });
+          }
+        }}
       />
 
       {/* Layer Statistics Popover */}

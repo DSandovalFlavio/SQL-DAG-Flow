@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: sql-dag-flow
-Version: 0.4.2
+Version: 0.4.7
 Summary: A sophisticated SQL lineage visualization tool for Medallion Architectures.
 Author-email: Flavio Sandoval <dsandovalflavio@gmail.com>
 License: MIT
@@ -73,8 +73,11 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
     *   **Hide/Show**: Toggle visibility of individual nodes or full branches.
 *   **Advanced Navigation**:
     *   **Sidebar**: Grouped list of nodes with toggle between **By Layer** and **By Project/Dataset** views.
+    *   **Command Palette (Cmd+P)**: Instantly search and navigate to nodes across large projects.
+    *   **Keyboard Arrow Navigation**: Rapidly explore lineage by moving ← (upstream) and → (downstream) between connected nodes.
+    *   **Breadcrumb Trail**: Maintain context while drilling down with a visual history of visited nodes.
     *   **SQL Content Search**: Search inside SQL file content across all nodes — find WHERE clauses, JOINs, or any keyword.
-    *   **Details Panel**: View formatted SQL code, schema preview (DDL, CTAS, Views), and node configuration.
+    *   **Details Panel**: View formatted SQL code, schema preview (DDL, CTAS, Views), node configuration, and add **custom descriptions** to document models.
 
 ### 📝 Notes & Annotations
 *   **Center Placement**: New notes spawn exactly in the center of your view.
@@ -84,12 +87,16 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
     *   **Groups**: Create visual containers to group related nodes.
 
 ### 📊 Discovery & Analysis Tools
+*   **Impact Analysis**: Visualize blast radius before making changes. Highlights downstream models, column usage, and risk levels.
+*   **Diff View on Refresh**: Automatically summarizes added, removed, and modified nodes/edges after code changes.
+*   **Column Usage Tracking**: Schema Preview shows which specific columns are used by downstream consumers.
+*   **Staleness Detection**: Automatically flags inactive models (`Last Modified > 90d` = Stale) to help clean up legacy pipelines.
 *   **Business Rule Extraction**: Automatically detects and displays WHERE filters, CASE logic, HAVING clauses, and aggregations from each SQL model.
 *   **Complexity Scoring**: Weighted metric per node (JOINs×3, CTEs×2, Subqueries×3, Filters×1, CASE×2, Aggregations×1, UNIONs×2) with color-coded badges (🟢 Low, 🟡 Medium, 🟠 High, 🔴 Very High). Toggleable via ⚡ button.
-*   **Statistics Panel**: Centered popup with layer distribution bars, edge/source/sink/orphan counts, project/dataset tree, and architecture health validation.
+*   **Statistics Panel**: Centered popup with layer distribution bars, edge/source/sink/orphan counts, project/dataset tree, and architecture health validation (now detects **circular dependencies**).
 *   **Schema Preview**: Extracts columns from DDL, CTAS (`CREATE TABLE AS SELECT`), and `CREATE VIEW` statements.
 
-### 🎨 Linear-Inspired UI (New in v0.4.0 ✨)
+### 🎨 Linear-Inspired UI (New in v0.4.6 ✨)
 *   **Design Token System**: ~80 CSS custom properties for consistent theming across all components.
 *   **Premium Dark Theme**: Deep `#0d0d0d` canvas with warm white text (`#e8e8e6`), never pure white.
 *   **Refined Light Theme**: Warm off-white `#f7f6f3` backgrounds — never harsh pure white.
@@ -99,12 +106,13 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
 *   **Custom Scrollbars**: Subtle, styled scrollbars matching the theme.
 *   **Focus Rings**: Accessible focus indicators using the accent color.
 
-### ⚙️ Customization
+### ⚙️ Customization & Export
 *   **Premium UI**:
     *   **Themes**: Toggle between Light and Dark modes.
-    *   **Palettes**: Choose from **Standard**, **Vivid**, **Pastel**, or **Linear** (new — muted, LCH-inspired tones) color schemes.
+    *   **Palettes**: Choose from **Standard**, **Vivid**, **Pastel**, or **Linear** (LCH-inspired tones) color schemes.
     *   **Styles**: Switch between "Full" (colored body) and "Minimal" (colored border) node styles.
-*   **Export**: Save high-resolution **PNG** or vector **SVG** diagrams for documentation.
+*   **Export Dictionary**: Generate and download a comprehensive Markdown Data Dictionary report of your entire DAG.
+*   **Export Graph**: Save high-resolution **PNG** or vector **SVG** diagrams for documentation.
 
 ---
 
@@ -131,7 +139,7 @@ Install easily via `pip`:
 pip install sql-dag-flow
 ```
 
-To update to the latest version (**v0.4.0**):
+To update to the latest version (**v0.4.6**):
 
 ```bash
 pip install --upgrade sql-dag-flow

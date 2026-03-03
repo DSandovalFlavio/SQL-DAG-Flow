@@ -68,6 +68,7 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
 *   **Staleness Detection**: Automatically flags inactive models (`Last Modified > 90d` = Stale) to help clean up legacy pipelines.
 *   **Business Rule Extraction**: Automatically detects and displays WHERE filters, CASE logic, HAVING clauses, and aggregations from each SQL model.
 *   **Complexity Scoring**: Weighted metric per node (JOINs×3, CTEs×2, Subqueries×3, Filters×1, CASE×2, Aggregations×1, UNIONs×2) with color-coded badges (🟢 Low, 🟡 Medium, 🟠 High, 🔴 Very High). Toggleable via ⚡ button.
+*   **Node Comparison (New in v0.4.7 🆕)**: Select exactly 2 nodes and compare them side-by-side. Highlights differences across metadata, schema columns (shared vs unique), dependencies (Venn-style), complexity scores (with delta indicators), business rules, and SQL content (synced scroll).
 *   **Statistics Panel**: Centered popup with layer distribution bars, edge/source/sink/orphan counts, project/dataset tree, and architecture health validation (now detects **circular dependencies**).
 *   **Schema Preview**: Extracts columns from DDL, CTAS (`CREATE TABLE AS SELECT`), and `CREATE VIEW` statements.
 
@@ -114,7 +115,7 @@ Install easily via `pip`:
 pip install sql-dag-flow
 ```
 
-To update to the latest version (**v0.4.6**):
+To update to the latest version (**v0.4.7**):
 
 ```bash
 pip install --upgrade sql-dag-flow
