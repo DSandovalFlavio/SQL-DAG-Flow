@@ -776,7 +776,7 @@ const DetailsPanel = ({
                                 )}
 
                                 {/* Schema Preview */}
-                                <SchemaPreview content={node.details?.content} isDark={isDark} columnConsumers={node.details?.column_consumers} />
+                                <SchemaPreview content={node.details?.content} isDark={isDark} columnConsumers={node.details?.column_consumers} backendSchema={node.details?.schema} />
 
                                 {/* Business Rules */}
                                 <BusinessRules rules={node.details?.business_rules} isDark={isDark} />
@@ -959,10 +959,14 @@ function highlightGap(text, prefix, isDark) {
 }
 
 // Schema Preview sub-component
-const SchemaPreview = ({ content, isDark, columnConsumers = {} }) => {
+const SchemaPreview = ({ content, isDark, columnConsumers = {}, backendSchema }) => {
     const [isOpen, setIsOpen] = useState(false);
 
     const columns = useMemo(() => {
+        // Prefer backend-extracted schema (AST-based, accurate)
+        if (backendSchema && backendSchema.length > 0) return backendSchema;
+
+        // Fallback: frontend regex (for cached/old data)
         if (!content) return [];
 
         // 1. DDL with column definitions: CREATE TABLE name (col1 TYPE, col2 TYPE)

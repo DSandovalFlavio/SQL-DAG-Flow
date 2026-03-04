@@ -5,6 +5,83 @@ import sqlglot
 from sqlglot import exp
 import networkx as nx
 
+
+def extract_output_columns(parsed, dialect="bigquery"):
+    """
+    Extract output column schema from a parsed SQL AST.
+    Returns a list of {"name": str, "type": str} dicts.
+    
+    Handles:
+    - DDL with explicit column definitions (CREATE TABLE t (col TYPE))
+    - CTAS / CREATE VIEW AS SELECT
+    - WITH...SELECT (final SELECT after CTEs)
+    - Standalone SELECT
+    - Window functions, nested functions, CASE expressions
+    - SELECT * (returns [{"name": "*", "type": "ALL"}])
+    """
+    columns = []
+
+    # Case 1: DDL with explicit column definitions
+    if isinstance(parsed, exp.Create):
+        schema_node = parsed.this
+        if isinstance(schema_node, exp.Schema):
+            for col_def in schema_node.expressions:
+                if isinstance(col_def, exp.ColumnDef):
+                    col_name = col_def.name
+                    col_type_node = col_def.args.get("kind")
+                    type_str = col_type_node.sql(dialect=dialect) if col_type_node else "UNKNOWN"
+                    columns.append({"name": col_name, "type": type_str})
+            if columns:
+                return columns
+
+    # Case 2: Find the final SELECT statement
+    # For CTAS, CREATE VIEW AS, WITH...SELECT, standalone SELECT
+    # We want the outermost SELECT that isn't inside a CTE or subquery
+    select_node = None
+    
+    if isinstance(parsed, exp.Create):
+        # For CTAS / CREATE VIEW AS: get the SELECT inside the CREATE
+        inner = parsed.expression
+        if inner:
+            if isinstance(inner, exp.Select):
+                select_node = inner
+            elif hasattr(inner, 'find'):
+                select_node = inner.find(exp.Select)
+    
+    if not select_node:
+        # For standalone queries: find WITH wrapper or direct SELECT
+        # Walk to find the top-level Select (not nested in subquery)
+        if isinstance(parsed, exp.Select):
+            select_node = parsed
+        else:
+            # Could be a WITH or UNION — find the first select
+            select_node = parsed.find(exp.Select)
+    
+    if select_node:
+        for expr in select_node.expressions:
+            try:
+                if isinstance(expr, exp.Star):
+                    columns.append({"name": "*", "type": "ALL"})
+                elif isinstance(expr, exp.Alias):
+                    alias_name = expr.alias
+                    inner_expr = expr.this
+                    type_str = inner_expr.sql(dialect=dialect, pretty=False)
+                    # Truncate very long expressions for readability
+                    if len(type_str) > 80:
+                        type_str = type_str[:77] + "..."
+                    columns.append({"name": alias_name, "type": type_str})
+                elif isinstance(expr, exp.Column):
+                    columns.append({"name": expr.name, "type": "column"})
+                else:
+                    # Computed expression without alias
+                    expr_sql = expr.sql(dialect=dialect, pretty=False)
+                    name = expr_sql[:40] + "..." if len(expr_sql) > 40 else expr_sql
+                    columns.append({"name": name, "type": "expression"})
+            except Exception:
+                continue
+
+    return columns
+
 def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
     """
     Recursively scans a directory for .sql files and parses them.
@@ -389,6 +466,7 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                         "content": sql_content,
                         "ctes": defined_ctes,
                         "cte_deps": cte_deps,
+                        "schema": extract_output_columns(parsed, dialect),
                         "business_rules": business_rules,
                         "complexity": complexity_breakdown,
                         "column_references": column_references,

@@ -522,8 +522,14 @@ const ComparisonPanel = ({ nodeA, nodeB, onClose, theme }) => {
     const labelA = nodeA?.label || nodeA?.id || 'Node A';
     const labelB = nodeB?.label || nodeB?.id || 'Node B';
 
-    const colsA = useMemo(() => extractColumns(nodeA?.details?.content), [nodeA?.details?.content]);
-    const colsB = useMemo(() => extractColumns(nodeB?.details?.content), [nodeB?.details?.content]);
+    const colsA = useMemo(() => {
+        if (nodeA?.details?.schema?.length > 0) return nodeA.details.schema;
+        return extractColumns(nodeA?.details?.content);
+    }, [nodeA?.details?.schema, nodeA?.details?.content]);
+    const colsB = useMemo(() => {
+        if (nodeB?.details?.schema?.length > 0) return nodeB.details.schema;
+        return extractColumns(nodeB?.details?.content);
+    }, [nodeB?.details?.schema, nodeB?.details?.content]);
 
     const depsA = useMemo(() => getDependencyList(nodeA?.details?.dependencies), [nodeA?.details?.dependencies]);
     const depsB = useMemo(() => getDependencyList(nodeB?.details?.dependencies), [nodeB?.details?.dependencies]);
