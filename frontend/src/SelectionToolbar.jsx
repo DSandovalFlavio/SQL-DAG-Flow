@@ -1,7 +1,7 @@
 import React from 'react';
-import { AlignStartVertical, AlignStartHorizontal, AlignEndVertical, AlignEndHorizontal, AlignCenterVertical, AlignCenterHorizontal, Rows, Columns, ArrowDownToLine, ArrowRightToLine, X, GitCompareArrows } from 'lucide-react';
+import { AlignStartVertical, AlignStartHorizontal, AlignEndVertical, AlignEndHorizontal, AlignCenterVertical, AlignCenterHorizontal, Rows, Columns, ArrowDownToLine, ArrowRightToLine, X, GitCompareArrows, EyeOff } from 'lucide-react';
 
-const SelectionToolbar = ({ selectedCount, onAlign, onClearSelection, onBatchLayerChange, onCompare, theme }) => {
+const SelectionToolbar = ({ selectedCount, onAlign, onClearSelection, onBatchLayerChange, onCompare, onHide, theme }) => {
     if (selectedCount < 2) return null;
 
     const buttonStyle = {
@@ -83,17 +83,22 @@ const SelectionToolbar = ({ selectedCount, onAlign, onClearSelection, onBatchLay
 
             <div style={{ width: 1, height: 20, background: 'var(--border-emphasis)' }} />
 
-            {/* Compare (only when exactly 2 selected) */}
             {selectedCount === 2 && onCompare && (
                 <>
                     <button onClick={onCompare} title="Compare Nodes" style={{ ...buttonStyle, gap: '4px', fontSize: '12px', fontWeight: 600 }} onMouseEnter={handleHover} onMouseLeave={handleLeave}>
                         <GitCompareArrows size={16} /> Compare
                     </button>
-                    <div style={{ width: 1, height: 20, background: 'var(--border-emphasis)' }} />
                 </>
             )}
 
-            {/* Batch Layer Change */}
+            {/* Hide selected nodes */}
+            {onHide && (
+                <button onClick={onHide} title={`Hide ${selectedCount} nodes`} style={{ ...buttonStyle, gap: '4px', fontSize: '12px', fontWeight: 600 }} onMouseEnter={handleHover} onMouseLeave={handleLeave}>
+                    <EyeOff size={16} /> Hide
+                </button>
+            )}
+
+            <div style={{ width: 1, height: 20, background: 'var(--border-emphasis)' }} />
             {onBatchLayerChange && (
                 <>
                     {['bronze', 'silver', 'gold'].map((layer) => {

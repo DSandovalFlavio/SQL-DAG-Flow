@@ -405,6 +405,9 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                         alias_map[t_name] = t_full
                     
                     # Extract column references with their table qualifier
+                    # Also capture unqualified columns and assign them to source tables
+                    unqualified_columns = set()
+                    
                     for col in parsed.find_all(exp.Column):
                         col_name = col.name
                         col_table = col.table  # The table qualifier (alias or name)
@@ -413,6 +416,36 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                             if source not in column_references:
                                 column_references[source] = set()
                             column_references[source].add(col_name)
+                        elif not col_table:
+                            # Unqualified column — track separately
+                            unqualified_columns.add(col_name)
+                    
+                    # Assign unqualified columns to source tables
+                    # Filter out CTEs and the target table itself (both short and full name)
+                    source_tables = [
+                        v for k, v in alias_map.items() 
+                        if v != target_table_name 
+                        and v.split('.')[-1] != target_table_name
+                        and v not in defined_ctes
+                        and v.split('.')[-1] not in defined_ctes
+                    ]
+                    # Deduplicate (aliases may point to same table)
+                    source_tables = list(set(source_tables))
+                    
+                    if unqualified_columns and source_tables:
+                        if len(source_tables) == 1:
+                            # Single source: assign all unqualified columns to it
+                            src = source_tables[0]
+                            if src not in column_references:
+                                column_references[src] = set()
+                            column_references[src].update(unqualified_columns)
+                        else:
+                            # Multiple sources: assign to ALL sources (best effort)
+                            # The UI will show them as "used" which is better than missing
+                            for src in source_tables:
+                                if src not in column_references:
+                                    column_references[src] = set()
+                                column_references[src].update(unqualified_columns)
                     
                     # Convert sets to sorted lists for JSON serialization
                     column_references = {k: sorted(list(v)) for k, v in column_references.items()}
@@ -715,6 +748,9 @@ def build_graph(tables, discovery_mode=False, expanded_nodes=None):
                 source_node_id = lookup.get(source_ref.split(".")[-1])
             
             if source_node_id and source_node_id in all_nodes_data:
+                # Skip self-references (a model shouldn't be its own consumer)
+                if source_node_id == consumer_id:
+                    continue
                 if source_node_id not in column_consumers:
                     column_consumers[source_node_id] = {}
                 for col in columns:

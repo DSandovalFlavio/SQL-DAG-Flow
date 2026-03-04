@@ -13,7 +13,7 @@ const DetailsPanel = ({
     onLayerChange,
     onImpactAnalysis
 }) => {
-    const [width, setWidth] = useState(450);
+    const [width, setWidth] = useState(() => Math.round(window.innerWidth / 2));
     const [isDragging, setIsDragging] = useState(false);
     const [isEditingLayer, setIsEditingLayer] = useState(false);
     const [tempLayer, setTempLayer] = useState(node?.layer || 'other');

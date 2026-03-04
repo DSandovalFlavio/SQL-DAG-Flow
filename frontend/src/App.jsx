@@ -50,8 +50,10 @@ const Flow = () => {
 
   const edgesRef = useRef([]);
   const nodesRef = useRef([]);
+  const rfInstanceRef = useRef(null);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+  useEffect(() => { rfInstanceRef.current = rfInstance; }, [rfInstance]);
 
   // New Features State
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -105,6 +107,26 @@ const Flow = () => {
       setSelectedNode(nodeData);
       setLineageNodes(null);
       setDetailsNode(nodeData);
+
+      // Center the node in the LEFT half of the screen (details panel takes right half)
+      const nodeId = nodeData.id || nodeData.details?.id;
+      const targetNode = currentNodes.find(n => n.id === nodeId);
+      const rf = rfInstanceRef.current;
+      if (targetNode && rf) {
+        const panelWidth = Math.round(window.innerWidth / 2);
+        const leftHalfCenterX = (window.innerWidth - panelWidth) / 2;
+        const leftHalfCenterY = window.innerHeight / 2;
+        const nodeX = targetNode.position.x + (targetNode.measured?.width || 180) / 2;
+        const nodeY = targetNode.position.y + (targetNode.measured?.height || 60) / 2;
+        const currentZoom = rf.getViewport().zoom;
+        const targetZoom = Math.min(Math.max(currentZoom, 0.6), 0.85);
+        rf.setViewport({
+          x: leftHalfCenterX - nodeX * targetZoom,
+          y: leftHalfCenterY - nodeY * targetZoom,
+          zoom: targetZoom
+        }, { duration: 500 });
+      }
+
       // Track breadcrumb history
       setNavHistory(prev => {
         const next = [...prev, { id: nodeData.id || nodeData.details?.id, label: nodeData.label, layer: nodeData.layer }];
@@ -483,13 +505,13 @@ const Flow = () => {
 
   // 1. Update Nodes (Theme, Style, Palette, Layers, Hidden)
   useEffect(() => {
-    setNodes((nds) =>
-      nds.map((node) => {
+    setNodes((nds) => {
+      // First pass: compute base visibility
+      const updatedNodes = nds.map((node) => {
         const isLayerVisible = visibleLayers[node.data.layer || 'other'];
         const isManuallyHidden = hiddenNodeIds.includes(node.id);
         const isHidden = !isLayerVisible || isManuallyHidden;
 
-        // Check if data actually needs update to avoid unnecessary re-renders (optimization)
         let newData = { ...node.data };
         let changed = false;
 
@@ -499,26 +521,37 @@ const Flow = () => {
         if (newData.showCounts !== showCounts) { newData.showCounts = showCounts; changed = true; }
         if (newData.showComplexity !== showComplexity) { newData.showComplexity = showComplexity; changed = true; }
         if (newData.showTags !== showTags) { newData.showTags = showTags; changed = true; }
-        // functions usually stable but good to ensure
         newData.onContextMenu = onNodeContextMenu;
         newData.onAction = handleApplyAction;
         newData.onEdit = onEdit;
 
-        if (node.hidden === isHidden && !changed) return node;
-
-        let updatedNode = {
-          ...node,
-          hidden: isHidden
-        };
-
+        let updatedNode = { ...node, hidden: isHidden };
         if (node.type === 'custom') {
           updatedNode.data = newData;
         } else if (node.type === 'annotation') {
           updatedNode.data = { ...node.data, theme, onEdit };
         }
         return updatedNode;
-      })
-    );
+      });
+
+      // Second pass: hide ghost nodes whose ALL connected nodes are hidden
+      const hiddenSet = new Set(updatedNodes.filter(n => n.hidden).map(n => n.id));
+      const ghostLayers = new Set(['external', 'cte']);
+      const currentEdges = edgesRef.current;
+      updatedNodes.forEach(node => {
+        if (node.hidden) return;
+        const layer = node.data?.layer || node.data?.details?.layer;
+        if (!ghostLayers.has(layer)) return;
+        const connectedIds = currentEdges
+          .filter(e => e.source === node.id || e.target === node.id)
+          .map(e => e.source === node.id ? e.target : e.source);
+        if (connectedIds.length > 0 && connectedIds.every(id => hiddenSet.has(id))) {
+          node.hidden = true;
+        }
+      });
+
+      return updatedNodes;
+    });
   }, [theme, nodeStyle, palette, visibleLayers, showCounts, showComplexity, showTags, hiddenNodeIds]);
 
   // 2. Update Edges (Selection Highlight)
@@ -731,6 +764,24 @@ const Flow = () => {
       };
     });
 
+    // Hide ghost/discovered nodes whose connected parent nodes are ALL hidden
+    // This prevents orphan ghost nodes in Discovery Mode when source nodes are hidden
+    const hiddenSet = new Set(styledNodes.filter(n => n.hidden).map(n => n.id));
+    const ghostLayers = new Set(['external', 'cte']);
+    styledNodes.forEach(node => {
+      if (node.hidden) return; // Already hidden
+      const layer = node.data?.layer || node.data?.details?.layer;
+      if (!ghostLayers.has(layer)) return; // Not a ghost node
+      // Find all edges connected to this ghost node
+      const connectedNodeIds = data.edges
+        .filter(e => e.source === node.id || e.target === node.id)
+        .map(e => e.source === node.id ? e.target : e.source);
+      // Hide if ALL connected nodes are hidden
+      if (connectedNodeIds.length > 0 && connectedNodeIds.every(id => hiddenSet.has(id))) {
+        node.hidden = true;
+      }
+    });
+
     // If we have existing nodes and just refreshing data, we might want to avoid full auto-layout
     // But if new nodes appear, we need layout.
     // Strategy: 
@@ -781,7 +832,7 @@ const Flow = () => {
   const navigateToNode = (item, index) => {
     const targetNode = nodes.find(n => n.id === item.id);
     if (targetNode && rfInstance) {
-      rfInstance.fitView({ nodes: [{ id: item.id }], duration: 400, padding: 0.5 });
+      rfInstance.fitView({ nodes: [{ id: item.id }], duration: 400, padding: 0.5, maxZoom: 0.85 });
       setNodes(nds => nds.map(n => ({ ...n, selected: n.id === item.id })));
       setSelectedNode(targetNode.data);
       setDetailsNode(targetNode.data);
@@ -1659,6 +1710,11 @@ const Flow = () => {
             setComparisonNodes({ nodeA: selected[0].data, nodeB: selected[1].data });
           }
         }}
+        onHide={() => {
+          const selectedIds = nodes.filter(n => n.selected).map(n => n.id);
+          setHiddenNodeIds(prev => [...new Set([...prev, ...selectedIds])]);
+          setNodes(nds => nds.map(n => ({ ...n, selected: false })));
+        }}
       />
 
       {/* Layer Statistics Popover */}
@@ -1675,7 +1731,7 @@ const Flow = () => {
         onSelectNode={(node) => {
           // Pan and zoom to the selected node
           if (rfInstance) {
-            rfInstance.fitView({ nodes: [{ id: node.id }], duration: 500, padding: 0.5 });
+            rfInstance.fitView({ nodes: [{ id: node.id }], duration: 500, padding: 0.5, maxZoom: 0.85 });
           }
           setSelectedNode(node.data);
           setDetailsNode(node.data);
