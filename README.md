@@ -64,15 +64,17 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
 ### 📊 Discovery & Analysis Tools
 *   **Impact Analysis**: Visualize blast radius before making changes. Highlights downstream models, column usage, and risk levels.
 *   **Diff View on Refresh**: Automatically summarizes added, removed, and modified nodes/edges after code changes.
-*   **Column Usage Tracking (Improved in v0.4.8 🔧)**: Schema Preview shows which specific columns are used by downstream consumers. Now tracks both qualified (`u.name`) and unqualified (`name`) column references for accurate counts.
+*   **Column Usage Tracking (Improved in v0.4.9 🔧)**: Schema Preview shows which specific columns are used by downstream consumers. Uses `sqlglot.optimizer.qualify_columns` for precise resolution of unqualified column references.
 *   **Staleness Detection**: Automatically flags inactive models (`Last Modified > 90d` = Stale) to help clean up legacy pipelines.
 *   **Business Rule Extraction**: Automatically detects and displays WHERE filters, CASE logic, HAVING clauses, and aggregations from each SQL model.
 *   **Complexity Scoring**: Weighted metric per node (JOINs×3, CTEs×2, Subqueries×3, Filters×1, CASE×2, Aggregations×1, UNIONs×2) with color-coded badges (🟢 Low, 🟡 Medium, 🟠 High, 🔴 Very High). Toggleable via ⚡ button.
 *   **Node Comparison**: Select exactly 2 nodes and compare them side-by-side. Highlights differences across metadata, schema columns (shared vs unique), dependencies (Venn-style), complexity scores (with delta indicators), business rules, and SQL content (synced scroll).
 *   **Statistics Panel**: Centered popup with layer distribution bars, edge/source/sink/orphan counts, project/dataset tree, and architecture health validation (now detects **circular dependencies**).
-*   **Schema Extraction (Improved in v0.4.8 🔧)**: Backend AST-based extraction via `sqlglot` handles DDL, CTAS, `CREATE VIEW AS`, CTEs, window functions, CASE expressions, and `SELECT *`.
-*   **Batch Hide from Toolbar (New in v0.4.8 🆕)**: Select multiple nodes → click "Hide" in the selection toolbar to hide them all at once.
-*   **Discovery Mode Fix (v0.4.8 🔧)**: Ghost nodes from Discovery Mode are now hidden when their connected source nodes are hidden, preventing orphan ghost nodes.
+*   **Schema Extraction**: Backend AST-based extraction via `sqlglot` handles DDL, CTAS, `CREATE VIEW AS`, CTEs, window functions, CASE expressions, and `SELECT *`.
+*   **Column-Level Lineage (New in v0.4.9 🆕)**: Traces how each output column derives from source columns. Shows transformation chain (e.g., `order_timestamp ← orders_raw.order_date via CAST(... AS DATETIME)`).
+*   **SQL Syntax Validation (New in v0.4.9 🆕)**: Detects SQL parse errors and displays structured warnings with line/column references. Shows ⚠️ badge on nodes with syntax issues.
+*   **Batch Hide from Toolbar**: Select multiple nodes → click "Hide" in the selection toolbar to hide them all at once.
+*   **Discovery Mode Fix**: Ghost nodes from Discovery Mode are now hidden when their connected source nodes are hidden, preventing orphan ghost nodes.
 
 ### 🎨 Linear-Inspired UI (New in v0.4.6 ✨)
 *   **Design Token System**: ~80 CSS custom properties for consistent theming across all components.
@@ -117,7 +119,7 @@ Install easily via `pip`:
 pip install sql-dag-flow
 ```
 
-To update to the latest version (**v0.4.8**):
+To update to the latest version (**v0.4.9**):
 
 ```bash
 pip install --upgrade sql-dag-flow

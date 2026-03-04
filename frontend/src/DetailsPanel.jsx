@@ -778,6 +778,16 @@ const DetailsPanel = ({
                                 {/* Schema Preview */}
                                 <SchemaPreview content={node.details?.content} isDark={isDark} columnConsumers={node.details?.column_consumers} backendSchema={node.details?.schema} />
 
+                                {/* Column Lineage */}
+                                {node.details?.column_lineage && Object.keys(node.details.column_lineage).length > 0 && (
+                                    <ColumnLineage lineage={node.details.column_lineage} isDark={isDark} />
+                                )}
+
+                                {/* Syntax Warnings */}
+                                {node.details?.syntax_warnings?.length > 0 && (
+                                    <SyntaxWarnings warnings={node.details.syntax_warnings} isDark={isDark} />
+                                )}
+
                                 {/* Business Rules */}
                                 <BusinessRules rules={node.details?.business_rules} isDark={isDark} />
 
@@ -1222,6 +1232,132 @@ const ComplexityBreakdown = ({ complexity, isDark }) => {
                     </div>
                 </div>
             )}
+        </div>
+    );
+};
+
+// Column Lineage sub-component
+const ColumnLineage = ({ lineage, isDark }) => {
+    const [expanded, setExpanded] = React.useState(false);
+    const columns = Object.keys(lineage);
+    if (columns.length === 0) return null;
+
+    return (
+        <div style={{ marginBottom: '12px' }}>
+            <div
+                onClick={() => setExpanded(!expanded)}
+                style={{
+                    fontSize: '11px', fontWeight: 600, color: 'var(--text-tertiary)',
+                    textTransform: 'uppercase', letterSpacing: '0.05em',
+                    marginBottom: '8px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '6px'
+                }}
+            >
+                <GitBranch size={12} />
+                Column Lineage ({columns.length} columns)
+                <ChevronRight size={12} style={{
+                    transform: expanded ? 'rotate(90deg)' : 'none',
+                    transition: 'transform 0.15s ease'
+                }} />
+            </div>
+            {expanded && (
+                <div style={{
+                    background: 'var(--surface-primary)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: '10px',
+                    overflow: 'hidden'
+                }}>
+                    {columns.map((col, i) => (
+                        <div key={col} style={{
+                            padding: '8px 12px',
+                            borderBottom: i < columns.length - 1 ? '1px solid var(--border-default)' : 'none',
+                            fontSize: '12px'
+                        }}>
+                            <div style={{
+                                fontWeight: 600,
+                                color: 'var(--accent-primary)',
+                                marginBottom: '4px',
+                                fontFamily: "'SF Mono', 'Fira Code', monospace"
+                            }}>
+                                {col}
+                            </div>
+                            {lineage[col].map((src, j) => (
+                                <div key={j} style={{
+                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                    fontSize: '11px', color: 'var(--text-secondary)',
+                                    paddingLeft: '12px', marginTop: '2px'
+                                }}>
+                                    <ArrowRight size={10} style={{ opacity: 0.5, flexShrink: 0 }} />
+                                    <span style={{ fontFamily: "'SF Mono', 'Fira Code', monospace", fontSize: '10px' }}>
+                                        {src.source_table ? `${src.source_table}.` : ''}{src.source_column}
+                                    </span>
+                                    {src.transform && (
+                                        <span style={{
+                                            fontSize: '9px',
+                                            padding: '1px 6px',
+                                            background: 'var(--interactive-hover)',
+                                            borderRadius: '4px',
+                                            color: 'var(--text-tertiary)',
+                                            fontFamily: "'SF Mono', 'Fira Code', monospace",
+                                            maxWidth: '200px',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap'
+                                        }}
+                                            title={src.transform}
+                                        >
+                                            {src.transform}
+                                        </span>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// Syntax Warnings sub-component
+const SyntaxWarnings = ({ warnings, isDark }) => {
+    if (!warnings || warnings.length === 0) return null;
+
+    return (
+        <div style={{ marginBottom: '12px' }}>
+            <div style={{
+                fontSize: '11px', fontWeight: 600, color: '#e67e22',
+                textTransform: 'uppercase', letterSpacing: '0.05em',
+                marginBottom: '8px',
+                display: 'flex', alignItems: 'center', gap: '6px'
+            }}>
+                <AlertTriangle size={12} />
+                Syntax Issues ({warnings.length})
+            </div>
+            <div style={{
+                background: isDark ? 'rgba(230, 126, 34, 0.1)' : 'rgba(230, 126, 34, 0.08)',
+                border: '1px solid rgba(230, 126, 34, 0.3)',
+                borderRadius: '10px',
+                padding: '10px 12px'
+            }}>
+                {warnings.map((w, i) => (
+                    <div key={i} style={{
+                        fontSize: '12px',
+                        color: 'var(--text-primary)',
+                        marginBottom: i < warnings.length - 1 ? '8px' : 0,
+                        paddingBottom: i < warnings.length - 1 ? '8px' : 0,
+                        borderBottom: i < warnings.length - 1 ? '1px solid rgba(230, 126, 34, 0.2)' : 'none'
+                    }}>
+                        <div style={{ fontWeight: 600, marginBottom: '2px' }}>
+                            {w.description}
+                        </div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: "'SF Mono', 'Fira Code', monospace" }}>
+                            {w.line && `Line ${w.line}`}{w.col && `, Col ${w.col}`}
+                            {w.highlight && <span style={{ marginLeft: '8px', color: '#e67e22' }}>→ {w.highlight}</span>}
+                        </div>
+                    </div>
+                ))}
+            </div>
         </div>
     );
 };

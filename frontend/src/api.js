@@ -130,9 +130,13 @@ export const moveFile = async (currentPath, targetLayer) => {
     }
 };
 
-export const exportDataDictionary = async (dialect = 'bigquery') => {
+export const exportDataDictionary = async (dialect = 'bigquery', visibleNodeIds = null) => {
     try {
-        const response = await fetch(`${API_URL}/export?dialect=${dialect}`);
+        const response = await fetch(`${API_URL}/export`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dialect, visible_node_ids: visibleNodeIds }),
+        });
         if (!response.ok) throw new Error("Failed to export");
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);

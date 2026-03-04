@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { Handle, Position, NodeToolbar } from '@xyflow/react';
-import { Database, Table, FileText, Layers, Eye, Globe, EyeOff, FolderMinus, ScanEye, MousePointerClick, Maximize2, Minimize2 } from 'lucide-react';
+import { Database, Table, FileText, Layers, Eye, Globe, EyeOff, FolderMinus, ScanEye, MousePointerClick, Maximize2, Minimize2, AlertTriangle } from 'lucide-react';
 
 const CustomNode = ({ id, data }) => {
     const { label, layer, details, theme = 'dark', styleMode = 'full', onContextMenu } = data;
@@ -166,6 +166,31 @@ const CustomNode = ({ id, data }) => {
                     }}
                 >
                     {details.complexity.score}
+                </div>
+            )}
+
+            {/* Syntax Warning Badge */}
+            {details?.syntax_warnings?.length > 0 && (
+                <div
+                    title={`${details.syntax_warnings.length} syntax issue(s)`}
+                    style={{
+                        position: 'absolute',
+                        top: '-8px',
+                        left: '-8px',
+                        background: '#e67e22',
+                        color: '#fff',
+                        width: '22px',
+                        height: '22px',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: 'var(--shadow-md)',
+                        border: '2px solid var(--surface-primary)',
+                        zIndex: 2
+                    }}
+                >
+                    <AlertTriangle size={12} />
                 </div>
             )}
 

@@ -107,14 +107,23 @@ def get_filtered_graph(data: dict = Body(...)):
 def get_path():
     return {"path": CURRENT_DIRECTORY}
 
-@app.get("/export")
-def export_data_dictionary(dialect: str = "bigquery"):
-    """Generates a Markdown data dictionary report."""
+@app.post("/export")
+def export_data_dictionary(data: dict = Body(...)):
+    """Generates a Markdown data dictionary report for visible nodes only."""
+    dialect = data.get("dialect", "bigquery")
+    visible_node_ids = data.get("visible_node_ids", None)  # None = export all
+    
     if not os.path.exists(CURRENT_DIRECTORY):
         raise HTTPException(status_code=400, detail="Directory not found")
     
     tables = parse_sql_files(CURRENT_DIRECTORY, dialect=dialect)
     nodes, edges, cycles = build_graph(tables, discovery_mode=False)
+    
+    # Filter to only visible nodes if list provided
+    if visible_node_ids is not None:
+        visible_set = set(visible_node_ids)
+        nodes = [n for n in nodes if n['id'] in visible_set]
+        edges = [e for e in edges if e['source'] in visible_set and e['target'] in visible_set]
     
     lines = []
     lines.append(f"# Data Dictionary")
@@ -195,6 +204,17 @@ def export_data_dictionary(dialect: str = "bigquery"):
                 lines.extend(rules_items[:6])
                 lines.append(f"")
             
+            # Schema columns
+            schema = d.get('schema', [])
+            if schema:
+                lines.append(f"**Schema ({len(schema)} columns):**")
+                lines.append(f"")
+                lines.append(f"| Column | Type |")
+                lines.append(f"|--------|------|")
+                for col in schema:
+                    lines.append(f"| `{col.get('name', '?')}` | {col.get('type', 'UNKNOWN')} |")
+                lines.append(f"")
+            
             # Column consumers
             col_consumers = d.get('column_consumers', {})
             if col_consumers:
@@ -205,6 +225,30 @@ def export_data_dictionary(dialect: str = "bigquery"):
                 for col, consumers in sorted(col_consumers.items()):
                     consumer_labels = ', '.join([c['label'] for c in consumers])
                     lines.append(f"| `{col}` | {consumer_labels} |")
+                lines.append(f"")
+            
+            # Column lineage
+            col_lineage = d.get('column_lineage', {})
+            if col_lineage:
+                lines.append(f"**Column Lineage:**")
+                lines.append(f"")
+                lines.append(f"| Output Column | Source | Transform |")
+                lines.append(f"|---------------|--------|-----------|")
+                for col, sources in sorted(col_lineage.items()):
+                    for src in sources:
+                        src_ref = f"{src.get('source_table', '')}.{src.get('source_column', '')}" if src.get('source_table') else src.get('source_column', '')
+                        transform = src.get('transform', '') or '—'
+                        lines.append(f"| `{col}` | `{src_ref}` | {transform} |")
+                lines.append(f"")
+            
+            # Syntax warnings
+            syntax_warnings = d.get('syntax_warnings', [])
+            if syntax_warnings:
+                lines.append(f"**⚠️ Syntax Issues ({len(syntax_warnings)}):**")
+                lines.append(f"")
+                for w in syntax_warnings:
+                    loc = f"Line {w.get('line', '?')}, Col {w.get('col', '?')}" if w.get('line') else ""
+                    lines.append(f"- {w.get('description', 'Unknown error')} {f'({loc})' if loc else ''}")
                 lines.append(f"")
             
             lines.append(f"---")

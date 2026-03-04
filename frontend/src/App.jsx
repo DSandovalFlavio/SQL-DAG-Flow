@@ -1497,7 +1497,7 @@ const Flow = () => {
 
           {/* Export Data Dictionary */}
           <button
-            onClick={() => exportDataDictionary(dialect)}
+            onClick={() => exportDataDictionary(dialect, nodes.map(n => n.id))}
             title="Export Data Dictionary"
             style={bottomButtonStyle}
           >

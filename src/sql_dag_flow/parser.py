@@ -3,6 +3,7 @@ import re
 import time
 import sqlglot
 from sqlglot import exp
+from sqlglot.optimizer.qualify_columns import qualify_columns as sqlglot_qualify_columns
 import networkx as nx
 
 
@@ -506,6 +507,30 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                         "header_meta": header_meta,
                         "last_modified_days": days_ago
                     }
+                except sqlglot.errors.ParseError as pe:
+                    # Feature 4: Capture structured syntax errors
+                    syntax_warnings = []
+                    for err in pe.errors:
+                        syntax_warnings.append({
+                            "description": err.get("description", str(pe)),
+                            "line": err.get("line"),
+                            "col": err.get("col"),
+                            "highlight": err.get("highlight", "")
+                        })
+                    print(f"Syntax error in {filepath}: {pe}")
+                    tables[filename_base] = {
+                        "id": filename_base,
+                        "label": filename_base,
+                        "layer": layer,
+                        "type": "unknown",
+                        "project": "n/a",
+                        "dataset": "n/a",
+                        "path": filepath,
+                        "dependencies": {},
+                        "error": str(pe),
+                        "syntax_warnings": syntax_warnings,
+                        "content": sql_content
+                    }
                 except Exception as e:
                     print(f"Error parsing {filepath}: {e}")
                     tables[filename_base] = {
@@ -520,6 +545,144 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                         "error": str(e),
                         "content": sql_content
                     }
+    # ===== Second Pass: Qualify Columns & Column Lineage =====
+    # Build a global schema dict for qualify_columns and lineage
+    global_schema = {}  # {dataset: {table: {col: type}}}
+    for tid, tdata in tables.items():
+        schema_cols = tdata.get("schema", [])
+        if not schema_cols:
+            continue
+        ds = tdata.get("dataset", "default")
+        label = tdata.get("label", tid)
+        if ds not in global_schema:
+            global_schema[ds] = {}
+        col_dict = {}
+        for c in schema_cols:
+            col_dict[c["name"]] = c.get("type", "UNKNOWN")
+        global_schema[ds][label] = col_dict
+        # Also add without dataset prefix for simpler lookups
+        if "default" not in global_schema:
+            global_schema["default"] = {}
+        global_schema["default"][label] = col_dict
+    
+    # Re-extract column_references using qualify_columns for precision
+    for tid, tdata in tables.items():
+        if tdata.get("error") or not tdata.get("content"):
+            continue
+        try:
+            parsed = sqlglot.parse_one(tdata["content"], read=dialect)
+            
+            # Try to qualify columns using the global schema
+            try:
+                qualified_ast = sqlglot_qualify_columns(parsed.copy(), schema=global_schema, dialect=dialect)
+            except Exception:
+                qualified_ast = parsed  # Fallback to unqualified
+            
+            # Re-extract column references from qualified AST
+            alias_map = {}
+            defined_ctes = set()
+            for cte in qualified_ast.find_all(exp.CTE):
+                cn = cte.alias_or_name
+                if cn:
+                    defined_ctes.add(cn)
+            
+            for t in qualified_ast.find_all(exp.Table):
+                t_name = t.name
+                t_full = t_name
+                if t.db:
+                    t_full = f"{t.db}.{t_name}"
+                    if t.catalog:
+                        t_full = f"{t.catalog}.{t.db}.{t_name}"
+                if t.alias:
+                    alias_map[t.alias] = t_full
+                alias_map[t_name] = t_full
+            
+            column_references = {}
+            target_name = tdata.get("label", tid)
+            unqualified_columns = set()
+            
+            for col in qualified_ast.find_all(exp.Column):
+                col_name = col.name
+                col_table = col.table
+                if col_table and col_table in alias_map:
+                    source = alias_map[col_table]
+                    if source not in column_references:
+                        column_references[source] = set()
+                    column_references[source].add(col_name)
+                elif not col_table:
+                    unqualified_columns.add(col_name)
+            
+            # Fallback for any remaining unqualified columns
+            if unqualified_columns:
+                source_tables = [
+                    v for k, v in alias_map.items()
+                    if v != target_name
+                    and v.split('.')[-1] != target_name
+                    and v not in defined_ctes
+                    and v.split('.')[-1] not in defined_ctes
+                ]
+                source_tables = list(set(source_tables))
+                if source_tables:
+                    for src in source_tables:
+                        if src not in column_references:
+                            column_references[src] = set()
+                        column_references[src].update(unqualified_columns)
+            
+            column_references = {k: sorted(list(v)) for k, v in column_references.items()}
+            tdata["column_references"] = column_references
+            
+        except Exception:
+            pass  # Keep original column_references
+    
+    # ===== Column-Level Lineage =====
+    # For each table, trace how each output column derives from source columns
+    for tid, tdata in tables.items():
+        if tdata.get("error") or not tdata.get("content"):
+            continue
+        schema_cols = tdata.get("schema", [])
+        if not schema_cols:
+            continue
+        
+        column_lineage = {}  # col_name -> [{source_table, source_column, transform}]
+        sql_content = tdata["content"]
+        
+        for col_info in schema_cols:
+            col_name = col_info["name"]
+            if col_name == "*":
+                continue
+            try:
+                from sqlglot.lineage import lineage as sqlglot_lineage
+                node = sqlglot_lineage(
+                    col_name, sql_content,
+                    schema=global_schema,
+                    dialect=dialect
+                )
+                sources = []
+                for child in node.downstream:
+                    source_col = child.name
+                    # Extract the source table from the expression
+                    source_table = ""
+                    if child.source and isinstance(child.source, exp.Table):
+                        source_table = child.source.name
+                        if child.source.db:
+                            source_table = f"{child.source.db}.{child.source.name}"
+                    
+                    transform = ""
+                    if child.expression and str(child.expression) != source_col:
+                        transform = str(child.expression)
+                    
+                    sources.append({
+                        "source_table": source_table,
+                        "source_column": source_col,
+                        "transform": transform
+                    })
+                if sources:
+                    column_lineage[col_name] = sources
+            except Exception:
+                pass  # Lineage not available for this column
+        
+        if column_lineage:
+            tdata["column_lineage"] = column_lineage
     
     return tables
 
