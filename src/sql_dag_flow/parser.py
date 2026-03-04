@@ -650,7 +650,7 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
     # ===== Column-Level Lineage =====
     # For each table, trace how each output column derives from source columns
     # Protected: skip if project is very large (>100 tables) and cap columns per table
-    MAX_LINEAGE_TABLES = 100
+    MAX_LINEAGE_TABLES = 500
     MAX_COLS_PER_TABLE = 30
     LINEAGE_TIME_BUDGET = 1.5  # seconds per table
     
