@@ -110,12 +110,12 @@ const DetailsPanel = ({
 
     const getLineAnnotation = useCallback((lineText) => {
         const upper = lineText.toUpperCase().trim();
-        if (/\bJOIN\b/.test(upper)) return { color: '#a78bfa', label: 'JOIN' };
-        if (/\bFROM\b/.test(upper)) return { color: '#60a5fa', label: 'FROM' };
+        if (/\bJOIN\b/.test(upper)) return { color: 'var(--sql-join)', label: 'JOIN' };
+        if (/\bFROM\b/.test(upper)) return { color: 'var(--sql-from)', label: 'FROM' };
         // Check for model/table references
         const lower = lineText.toLowerCase();
         for (const dep of dependencyNames) {
-            if (lower.includes(dep)) return { color: '#fbbf24', label: 'REF' };
+            if (lower.includes(dep)) return { color: 'var(--sql-ref)', label: 'REF' };
         }
         return null;
     }, [dependencyNames]);
@@ -454,7 +454,7 @@ const DetailsPanel = ({
                             }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                                     <Globe size={18} color="#ff9f1c" />
-                                    <span style={{ fontWeight: '600', color: '#ff9f1c' }}>Ghost Node</span>
+                                    <span style={{ fontWeight: '600', color: 'var(--sql-ghost)' }}>Ghost Node</span>
                                 </div>
                                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
                                     This node is referenced in your project but the corresponding SQL file was not found.
@@ -463,7 +463,7 @@ const DetailsPanel = ({
                                     onClick={() => onCreateFile(node)}
                                     style={{
                                         width: '100%', padding: '10px',
-                                        background: '#ff9f1c', color: 'white',
+                                        background: 'var(--sql-ghost)', color: 'var(--text-inverse)',
                                         border: 'none', borderRadius: '8px',
                                         fontWeight: '600', cursor: 'pointer',
                                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
@@ -561,7 +561,7 @@ const DetailsPanel = ({
                                                     <span style={{
                                                         fontSize: '9px', fontWeight: 700,
                                                         background: 'rgba(239, 68, 68, 0.12)',
-                                                        color: '#ef4444',
+                                                        color: 'var(--status-error)',
                                                         padding: '2px 6px', borderRadius: '4px',
                                                     }}>Stale</span>
                                                 )}
@@ -569,7 +569,7 @@ const DetailsPanel = ({
                                                     <span style={{
                                                         fontSize: '9px', fontWeight: 700,
                                                         background: 'rgba(251, 191, 36, 0.12)',
-                                                        color: '#fbbf24',
+                                                        color: 'var(--status-warning)',
                                                         padding: '2px 6px', borderRadius: '4px',
                                                     }}>Aging</span>
                                                 )}
@@ -763,7 +763,7 @@ const DetailsPanel = ({
                                                     fontSize: '10px',
                                                     fontWeight: 700,
                                                     background: 'rgba(96, 165, 250, 0.12)',
-                                                    color: '#60a5fa',
+                                                    color: 'var(--sql-from)',
                                                     padding: '2px 8px',
                                                     borderRadius: '4px',
                                                     display: 'flex', alignItems: 'center', gap: '3px',
@@ -859,9 +859,9 @@ const DetailsPanel = ({
                                     {/* Line Annotation Legend */}
                                     <div style={{ display: 'flex', gap: '12px', marginBottom: '4px' }}>
                                         {[
-                                            { color: '#60a5fa', label: 'FROM' },
-                                            { color: '#a78bfa', label: 'JOIN' },
-                                            { color: '#fbbf24', label: 'Reference' },
+                                            { color: 'var(--sql-from)', label: 'FROM' },
+                                            { color: 'var(--sql-join)', label: 'JOIN' },
+                                            { color: 'var(--sql-ref)', label: 'Reference' },
                                         ].map(item => (
                                             <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9px', color: 'var(--text-tertiary)' }}>
                                                 <div style={{ width: '3px', height: '10px', background: item.color, borderRadius: '1px' }} />
@@ -1047,8 +1047,8 @@ const SchemaPreview = ({ content, isDark, columnConsumers = {}, backendSchema })
                         marginLeft: '6px',
                         fontSize: '9px',
                         fontWeight: 700,
-                        background: 'rgba(96, 165, 250, 0.12)',
-                        color: '#60a5fa',
+                        background: 'var(--accent-muted)',
+                        color: 'var(--status-info)',
                         padding: '1px 6px',
                         borderRadius: '4px',
                     }}>
@@ -1139,10 +1139,10 @@ const BusinessRules = ({ rules, isDark }) => {
     };
 
     const sections = [
-        { key: 'filters', label: 'WHERE Filters', icon: <Filter size={11} />, color: '#60a5fa', data: rules.filters },
-        { key: 'case_logic', label: 'CASE Logic', icon: <GitBranch size={11} />, color: '#a78bfa', data: rules.case_logic },
-        { key: 'having', label: 'HAVING', icon: <Filter size={11} />, color: '#fbbf24', data: rules.having },
-        { key: 'aggregations', label: 'Aggregations', icon: <Zap size={11} />, color: '#34d399', data: rules.aggregations },
+        { key: 'filters', label: 'WHERE Filters', icon: <Filter size={11} />, color: 'var(--sql-from)', data: rules.filters },
+        { key: 'case_logic', label: 'CASE Logic', icon: <GitBranch size={11} />, color: 'var(--sql-join)', data: rules.case_logic },
+        { key: 'having', label: 'HAVING', icon: <Filter size={11} />, color: 'var(--sql-ref)', data: rules.having },
+        { key: 'aggregations', label: 'Aggregations', icon: <Zap size={11} />, color: 'var(--sql-agg)', data: rules.aggregations },
     ];
 
     return (
@@ -1182,13 +1182,13 @@ const ComplexityBreakdown = ({ complexity, isDark }) => {
     const levelColor = score <= 3 ? 'var(--status-success)' : score <= 7 ? 'var(--status-warning)' : score <= 12 ? '#e67e22' : 'var(--status-error)';
 
     const metrics = [
-        { label: 'JOINs', count: complexity.joins, weight: 3, color: '#60a5fa' },
-        { label: 'CTEs', count: complexity.ctes, weight: 2, color: '#f472b6' },
-        { label: 'Subqueries', count: complexity.subqueries, weight: 3, color: '#a78bfa' },
-        { label: 'Filters', count: complexity.filters, weight: 1, color: '#fbbf24' },
-        { label: 'CASE', count: complexity.case_statements, weight: 2, color: '#fb923c' },
-        { label: 'Aggregations', count: complexity.aggregations, weight: 1, color: '#34d399' },
-        { label: 'UNIONs', count: complexity.unions, weight: 2, color: '#2dd4bf' },
+        { label: 'JOINs', count: complexity.joins, weight: 3, color: 'var(--sql-from)' },
+        { label: 'CTEs', count: complexity.ctes, weight: 2, color: 'var(--sql-cte)' },
+        { label: 'Subqueries', count: complexity.subqueries, weight: 3, color: 'var(--sql-join)' },
+        { label: 'Filters', count: complexity.filters, weight: 1, color: 'var(--sql-ref)' },
+        { label: 'CASE', count: complexity.case_statements, weight: 2, color: 'var(--sql-case)' },
+        { label: 'Aggregations', count: complexity.aggregations, weight: 1, color: 'var(--sql-agg)' },
+        { label: 'UNIONs', count: complexity.unions, weight: 2, color: 'var(--sql-union)' },
     ].filter(m => m.count > 0);
 
     return (
@@ -1253,12 +1253,9 @@ const ColumnLineage = ({ lineage, isDark }) => {
                     display: 'flex', alignItems: 'center', gap: '6px'
                 }}
             >
+                {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                 <GitBranch size={12} />
                 Column Lineage ({columns.length} columns)
-                <ChevronRight size={12} style={{
-                    transform: expanded ? 'rotate(90deg)' : 'none',
-                    transition: 'transform 0.15s ease'
-                }} />
             </div>
             {expanded && (
                 <div style={{
@@ -1326,7 +1323,7 @@ const SyntaxWarnings = ({ warnings, isDark }) => {
     return (
         <div style={{ marginBottom: '12px' }}>
             <div style={{
-                fontSize: '11px', fontWeight: 600, color: '#e67e22',
+                fontSize: '11px', fontWeight: 600, color: 'var(--status-warning)',
                 textTransform: 'uppercase', letterSpacing: '0.05em',
                 marginBottom: '8px',
                 display: 'flex', alignItems: 'center', gap: '6px'
@@ -1335,8 +1332,8 @@ const SyntaxWarnings = ({ warnings, isDark }) => {
                 Syntax Issues ({warnings.length})
             </div>
             <div style={{
-                background: isDark ? 'rgba(230, 126, 34, 0.1)' : 'rgba(230, 126, 34, 0.08)',
-                border: '1px solid rgba(230, 126, 34, 0.3)',
+                background: isDark ? 'rgba(251, 191, 36, 0.08)' : 'rgba(217, 119, 6, 0.06)',
+                border: '1px solid var(--status-warning)',
                 borderRadius: '10px',
                 padding: '10px 12px'
             }}>
@@ -1346,14 +1343,14 @@ const SyntaxWarnings = ({ warnings, isDark }) => {
                         color: 'var(--text-primary)',
                         marginBottom: i < warnings.length - 1 ? '8px' : 0,
                         paddingBottom: i < warnings.length - 1 ? '8px' : 0,
-                        borderBottom: i < warnings.length - 1 ? '1px solid rgba(230, 126, 34, 0.2)' : 'none'
+                        borderBottom: i < warnings.length - 1 ? '1px solid var(--border-default)' : 'none'
                     }}>
                         <div style={{ fontWeight: 600, marginBottom: '2px' }}>
                             {w.description}
                         </div>
                         <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: "'SF Mono', 'Fira Code', monospace" }}>
                             {w.line && `Line ${w.line}`}{w.col && `, Col ${w.col}`}
-                            {w.highlight && <span style={{ marginLeft: '8px', color: '#e67e22' }}>→ {w.highlight}</span>}
+                            {w.highlight && <span style={{ marginLeft: '8px', color: 'var(--status-warning)' }}>→ {w.highlight}</span>}
                         </div>
                     </div>
                 ))}

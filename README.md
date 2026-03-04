@@ -40,6 +40,7 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
     *   Powered by **ELK (Eclipse Layout Kernel)**.
     *   Minimizes edge crossings and optimizes flow direction.
     *   Intelligent "Port" handling for cleaner connections.
+*   **Startup Configuration Selector**: Instantly resume previous sessions by selecting any `.json` configuration file found in your project directory upon launching the app.
 
 ### 🎮 Interactive Graph
 *   **Smart Context Menu**:
@@ -73,6 +74,8 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
 *   **Schema Extraction**: Backend AST-based extraction via `sqlglot` handles DDL, CTAS, `CREATE VIEW AS`, CTEs, window functions, CASE expressions, and `SELECT *`.
 *   **Column-Level Lineage (New in v0.4.9 🆕)**: Traces how each output column derives from source columns. Shows transformation chain (e.g., `order_timestamp ← orders_raw.order_date via CAST(... AS DATETIME)`).
 *   **SQL Syntax Validation (New in v0.4.9 🆕)**: Detects SQL parse errors and displays structured warnings with line/column references. Shows ⚠️ badge on nodes with syntax issues.
+*   **Large DAG Support & Safe Cycle Detection (New in v0.5.1 🚀)**: Optimized cycle detection algorithm prevents backend hanging and "Failed to fetch" browser errors when analyzing massive projects (50+ nodes). Employs quick DAG verifications and bounded iterator loops.
+*   **Performance Optimizations (New in v0.5.2 ⚡)**: Includes backend parsing TTL caching and frontend request deduplication to prevent server overload when refreshing large numbers of un-cached SQL files simultaneously.
 *   **Batch Hide from Toolbar**: Select multiple nodes → click "Hide" in the selection toolbar to hide them all at once.
 *   **Discovery Mode Fix**: Ghost nodes from Discovery Mode are now hidden when their connected source nodes are hidden, preventing orphan ghost nodes.
 
@@ -119,7 +122,7 @@ Install easily via `pip`:
 pip install sql-dag-flow
 ```
 
-To update to the latest version (**v0.4.9**):
+To update to the latest version (**v0.5.3**):
 
 ```bash
 pip install --upgrade sql-dag-flow

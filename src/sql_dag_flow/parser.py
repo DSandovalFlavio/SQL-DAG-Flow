@@ -566,17 +566,27 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
         global_schema["default"][label] = col_dict
     
     # Re-extract column_references using qualify_columns for precision
-    for tid, tdata in tables.items():
-        if tdata.get("error") or not tdata.get("content"):
-            continue
+    # Protected with per-table time budget to prevent hanging on large projects
+    qualify_tables = [(tid, tdata) for tid, tdata in tables.items() 
+                      if not tdata.get("error") and tdata.get("content")]
+    total_qualify = len(qualify_tables)
+    
+    for idx, (tid, tdata) in enumerate(qualify_tables):
+        table_start = time.time()
+        if idx % 10 == 0 and total_qualify > 10:
+            print(f"  Qualifying columns: {idx}/{total_qualify} tables...")
         try:
             parsed = sqlglot.parse_one(tdata["content"], read=dialect)
             
-            # Try to qualify columns using the global schema
+            # Try to qualify columns using the global schema (with 2s budget)
             try:
                 qualified_ast = sqlglot_qualify_columns(parsed.copy(), schema=global_schema, dialect=dialect)
             except Exception:
                 qualified_ast = parsed  # Fallback to unqualified
+            
+            # Check time budget
+            if time.time() - table_start > 2.0:
+                continue  # Skip extraction if qualification took too long
             
             # Re-extract column references from qualified AST
             alias_map = {}
@@ -634,55 +644,83 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
         except Exception:
             pass  # Keep original column_references
     
+    if total_qualify > 10:
+        print(f"  Qualifying columns: {total_qualify}/{total_qualify} done.")
+    
     # ===== Column-Level Lineage =====
     # For each table, trace how each output column derives from source columns
-    for tid, tdata in tables.items():
-        if tdata.get("error") or not tdata.get("content"):
-            continue
-        schema_cols = tdata.get("schema", [])
-        if not schema_cols:
-            continue
-        
-        column_lineage = {}  # col_name -> [{source_table, source_column, transform}]
-        sql_content = tdata["content"]
-        
-        for col_info in schema_cols:
-            col_name = col_info["name"]
-            if col_name == "*":
+    # Protected: skip if project is very large (>100 tables) and cap columns per table
+    MAX_LINEAGE_TABLES = 100
+    MAX_COLS_PER_TABLE = 30
+    LINEAGE_TIME_BUDGET = 1.5  # seconds per table
+    
+    lineage_tables = [(tid, tdata) for tid, tdata in tables.items()
+                      if not tdata.get("error") and tdata.get("content") and tdata.get("schema")]
+    total_lineage = len(lineage_tables)
+    
+    if total_lineage > MAX_LINEAGE_TABLES:
+        print(f"  Skipping column lineage: {total_lineage} tables exceeds limit of {MAX_LINEAGE_TABLES}")
+    else:
+        for idx, (tid, tdata) in enumerate(lineage_tables):
+            table_start = time.time()
+            if idx % 10 == 0 and total_lineage > 10:
+                print(f"  Column lineage: {idx}/{total_lineage} tables...")
+            
+            schema_cols = tdata.get("schema", [])
+            if not schema_cols:
                 continue
-            try:
-                from sqlglot.lineage import lineage as sqlglot_lineage
-                node = sqlglot_lineage(
-                    col_name, sql_content,
-                    schema=global_schema,
-                    dialect=dialect
-                )
-                sources = []
-                for child in node.downstream:
-                    source_col = child.name
-                    # Extract the source table from the expression
-                    source_table = ""
-                    if child.source and isinstance(child.source, exp.Table):
-                        source_table = child.source.name
-                        if child.source.db:
-                            source_table = f"{child.source.db}.{child.source.name}"
+            
+            column_lineage = {}  # col_name -> [{source_table, source_column, transform}]
+            sql_content = tdata["content"]
+            
+            cols_processed = 0
+            for col_info in schema_cols:
+                # Check time budget
+                if time.time() - table_start > LINEAGE_TIME_BUDGET:
+                    break
+                if cols_processed >= MAX_COLS_PER_TABLE:
+                    break
                     
-                    transform = ""
-                    if child.expression and str(child.expression) != source_col:
-                        transform = str(child.expression)
-                    
-                    sources.append({
-                        "source_table": source_table,
-                        "source_column": source_col,
-                        "transform": transform
-                    })
-                if sources:
-                    column_lineage[col_name] = sources
-            except Exception:
-                pass  # Lineage not available for this column
+                col_name = col_info["name"]
+                if col_name == "*":
+                    continue
+                cols_processed += 1
+                try:
+                    from sqlglot.lineage import lineage as sqlglot_lineage
+                    node = sqlglot_lineage(
+                        col_name, sql_content,
+                        schema=global_schema,
+                        dialect=dialect
+                    )
+                    sources = []
+                    for child in node.downstream:
+                        source_col = child.name
+                        # Extract the source table from the expression
+                        source_table = ""
+                        if child.source and isinstance(child.source, exp.Table):
+                            source_table = child.source.name
+                            if child.source.db:
+                                source_table = f"{child.source.db}.{child.source.name}"
+                        
+                        transform = ""
+                        if child.expression and str(child.expression) != source_col:
+                            transform = str(child.expression)
+                        
+                        sources.append({
+                            "source_table": source_table,
+                            "source_column": source_col,
+                            "transform": transform
+                        })
+                    if sources:
+                        column_lineage[col_name] = sources
+                except Exception:
+                    pass  # Lineage not available for this column
+            
+            if column_lineage:
+                tdata["column_lineage"] = column_lineage
         
-        if column_lineage:
-            tdata["column_lineage"] = column_lineage
+        if total_lineage > 10:
+            print(f"  Column lineage: {total_lineage}/{total_lineage} done.")
     
     return tables
 
@@ -961,13 +999,17 @@ def build_graph(tables, discovery_mode=False, expanded_nodes=None):
     # ===== Cycle Detection =====
     cycles = []
     try:
-        raw_cycles = list(nx.simple_cycles(G))
-        for cycle in raw_cycles:
-            cycle_labels = []
-            for nid in cycle:
-                label = all_nodes_data.get(nid, {}).get("label", nid)
-                cycle_labels.append({"id": nid, "label": label})
-            cycles.append(cycle_labels)
+        # Check if DAG first, as simple_cycles can take exponential time on large graphs
+        if not nx.is_directed_acyclic_graph(G):
+            cycle_iter = nx.simple_cycles(G)
+            for i, cycle in enumerate(cycle_iter):
+                if i >= 20:  # Cap at 20 cycles to prevent UI freezes & Memory/CPU overload
+                    break
+                cycle_labels = []
+                for nid in cycle:
+                    label = all_nodes_data.get(nid, {}).get("label", nid)
+                    cycle_labels.append({"id": nid, "label": label})
+                cycles.append(cycle_labels)
     except Exception:
         pass
 

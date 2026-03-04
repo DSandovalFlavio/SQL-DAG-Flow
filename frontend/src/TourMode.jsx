@@ -149,7 +149,7 @@ const TourMode = ({ nodes, edges, isOpen, onClose, onFocusNode, theme }) => {
                             </span>
                         </div>
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: step.description ? '6px' : 0 }}>
-                            <span style={{ fontSize: '10px', background: 'rgba(96,165,250,0.12)', color: '#60a5fa', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                            <span style={{ fontSize: '10px', background: 'var(--accent-muted)', color: 'var(--status-info)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
                                 {step.incoming} in → {step.downstream} out
                             </span>
                             {step.complexity > 5 && (
@@ -190,7 +190,7 @@ const TourMode = ({ nodes, edges, isOpen, onClose, onFocusNode, theme }) => {
                         style={{
                             background: isPlaying ? 'var(--status-warning)' : 'var(--accent-primary)',
                             border: 'none', borderRadius: '8px',
-                            color: '#fff', cursor: 'pointer',
+                            color: 'var(--text-inverse)', cursor: 'pointer',
                             padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '4px',
                             fontSize: '11px', fontWeight: 700,
                         }}

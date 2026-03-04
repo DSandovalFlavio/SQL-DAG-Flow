@@ -65,6 +65,16 @@
   --status-error: #f87171;
   --status-info: #60a5fa;
 
+  /* SQL Semantic Palette (data-visualization, consistent across components) */
+  --sql-join: #a78bfa;
+  --sql-from: #60a5fa;
+  --sql-ref: #fbbf24;
+  --sql-cte: #f472b6;
+  --sql-agg: #34d399;
+  --sql-case: #fb923c;
+  --sql-union: #2dd4bf;
+  --sql-ghost: #ff9f1c;
+
   /* Minimap */
   --minimap-bg: #141414;
 
@@ -131,6 +141,16 @@
   --status-warning: #d97706;
   --status-error: #dc2626;
   --status-info: #2563eb;
+
+  /* SQL Semantic Palette (slightly darker for light backgrounds) */
+  --sql-join: #7c3aed;
+  --sql-from: #2563eb;
+  --sql-ref: #d97706;
+  --sql-cte: #db2777;
+  --sql-agg: #059669;
+  --sql-case: #ea580c;
+  --sql-union: #0d9488;
+  --sql-ghost: #ea580c;
 
   /* Minimap */
   --minimap-bg: #efeeeb;
@@ -270,5 +290,29 @@ code {
   to {
     opacity: 1;
     transform: translate(-50%, 0);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes loading-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  50% {
+    transform: translateX(150%);
+  }
+
+  100% {
+    transform: translateX(-100%);
   }
 }

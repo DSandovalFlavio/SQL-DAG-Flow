@@ -134,9 +134,9 @@ const SchemaComparison = ({ colsA, colsB, labelA, labelB }) => {
                 <span style={{ fontSize: '9px', fontWeight: 700, background: 'var(--interactive-active)', padding: '2px 6px', borderRadius: '4px', color: 'var(--text-secondary)', marginLeft: '4px' }}>
                     {shared} shared
                 </span>
-                {onlyA > 0 && <span style={{ fontSize: '9px', fontWeight: 700, background: 'rgba(96, 165, 250, 0.12)', color: '#60a5fa', padding: '2px 6px', borderRadius: '4px' }}>+{onlyA} A</span>}
-                {onlyB > 0 && <span style={{ fontSize: '9px', fontWeight: 700, background: 'rgba(167, 139, 250, 0.12)', color: '#a78bfa', padding: '2px 6px', borderRadius: '4px' }}>+{onlyB} B</span>}
-                {typeDiff > 0 && <span style={{ fontSize: '9px', fontWeight: 700, background: 'rgba(251, 191, 36, 0.12)', color: '#fbbf24', padding: '2px 6px', borderRadius: '4px' }}>⚡{typeDiff} diff</span>}
+                {onlyA > 0 && <span style={{ fontSize: '9px', fontWeight: 700, background: 'rgba(96, 165, 250, 0.12)', color: 'var(--sql-from)', padding: '2px 6px', borderRadius: '4px' }}>+{onlyA} A</span>}
+                {onlyB > 0 && <span style={{ fontSize: '9px', fontWeight: 700, background: 'rgba(167, 139, 250, 0.12)', color: 'var(--sql-join)', padding: '2px 6px', borderRadius: '4px' }}>+{onlyB} B</span>}
+                {typeDiff > 0 && <span style={{ fontSize: '9px', fontWeight: 700, background: 'rgba(251, 191, 36, 0.12)', color: 'var(--sql-ref)', padding: '2px 6px', borderRadius: '4px' }}>⚡{typeDiff} diff</span>}
             </div>
             {isOpen && (
                 <div style={{ border: '1px solid var(--border-default)', borderRadius: '10px', overflow: 'hidden' }}>
@@ -144,8 +144,8 @@ const SchemaComparison = ({ colsA, colsB, labelA, labelB }) => {
                         <thead>
                             <tr style={{ background: 'var(--surface-primary)' }}>
                                 <th style={{ padding: '6px 10px', textAlign: 'left', color: 'var(--text-primary)', fontWeight: 600, borderBottom: '1px solid var(--border-default)', width: '30%' }}>Column</th>
-                                <th style={{ padding: '6px 10px', textAlign: 'left', color: '#60a5fa', fontWeight: 600, borderBottom: '1px solid var(--border-default)', width: '35%' }}>{labelA}</th>
-                                <th style={{ padding: '6px 10px', textAlign: 'left', color: '#a78bfa', fontWeight: 600, borderBottom: '1px solid var(--border-default)', width: '35%' }}>{labelB}</th>
+                                <th style={{ padding: '6px 10px', textAlign: 'left', color: 'var(--sql-from)', fontWeight: 600, borderBottom: '1px solid var(--border-default)', width: '35%' }}>{labelA}</th>
+                                <th style={{ padding: '6px 10px', textAlign: 'left', color: 'var(--sql-join)', fontWeight: 600, borderBottom: '1px solid var(--border-default)', width: '35%' }}>{labelB}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -206,8 +206,8 @@ const DependencyComparison = ({ depsA, depsB, labelA, labelB }) => {
                 <span style={{ fontSize: '9px', fontWeight: 700, background: 'var(--interactive-active)', padding: '2px 6px', borderRadius: '4px', color: 'var(--text-secondary)', marginLeft: '4px' }}>
                     {comparison.shared.length} shared
                 </span>
-                {comparison.onlyA.length > 0 && <span style={{ fontSize: '9px', fontWeight: 700, background: 'rgba(96, 165, 250, 0.12)', color: '#60a5fa', padding: '2px 6px', borderRadius: '4px' }}>+{comparison.onlyA.length} A</span>}
-                {comparison.onlyB.length > 0 && <span style={{ fontSize: '9px', fontWeight: 700, background: 'rgba(167, 139, 250, 0.12)', color: '#a78bfa', padding: '2px 6px', borderRadius: '4px' }}>+{comparison.onlyB.length} B</span>}
+                {comparison.onlyA.length > 0 && <span style={{ fontSize: '9px', fontWeight: 700, background: 'rgba(96, 165, 250, 0.12)', color: 'var(--sql-from)', padding: '2px 6px', borderRadius: '4px' }}>+{comparison.onlyA.length} A</span>}
+                {comparison.onlyB.length > 0 && <span style={{ fontSize: '9px', fontWeight: 700, background: 'rgba(167, 139, 250, 0.12)', color: 'var(--sql-join)', padding: '2px 6px', borderRadius: '4px' }}>+{comparison.onlyB.length} B</span>}
             </div>
             {isOpen && (
                 <div style={{ border: '1px solid var(--border-default)', borderRadius: '10px', padding: '12px', background: 'var(--surface-inset)' }}>
@@ -229,7 +229,7 @@ const DependencyComparison = ({ depsA, depsB, labelA, labelB }) => {
                     )}
                     {comparison.onlyB.length > 0 && (
                         <div>
-                            <div style={{ fontSize: '10px', fontWeight: 700, color: '#a78bfa', marginBottom: '4px', textTransform: 'uppercase' }}>Only in {labelB} ({comparison.onlyB.length})</div>
+                            <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--sql-join)', marginBottom: '4px', textTransform: 'uppercase' }}>Only in {labelB} ({comparison.onlyB.length})</div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
                                 {comparison.onlyB.map(d => depBadge(d, '#a78bfa'))}
                             </div>
@@ -253,12 +253,12 @@ const ComplexityComparison = ({ complexityA, complexityB, labelA, labelB }) => {
 
     const metricKeys = [
         { key: 'joins', label: 'JOINs', weight: 3, color: '#60a5fa' },
-        { key: 'ctes', label: 'CTEs', weight: 2, color: '#f472b6' },
-        { key: 'subqueries', label: 'Subqueries', weight: 3, color: '#a78bfa' },
-        { key: 'filters', label: 'Filters', weight: 1, color: '#fbbf24' },
-        { key: 'case_statements', label: 'CASE', weight: 2, color: '#fb923c' },
-        { key: 'aggregations', label: 'Aggregations', weight: 1, color: '#34d399' },
-        { key: 'unions', label: 'UNIONs', weight: 2, color: '#2dd4bf' },
+        { key: 'ctes', label: 'CTEs', weight: 2, color: 'var(--sql-cte)' },
+        { key: 'subqueries', label: 'Subqueries', weight: 3, color: 'var(--sql-join)' },
+        { key: 'filters', label: 'Filters', weight: 1, color: 'var(--sql-ref)' },
+        { key: 'case_statements', label: 'CASE', weight: 2, color: 'var(--sql-case)' },
+        { key: 'aggregations', label: 'Aggregations', weight: 1, color: 'var(--sql-agg)' },
+        { key: 'unions', label: 'UNIONs', weight: 2, color: 'var(--sql-union)' },
     ];
 
     const delta = scoreA - scoreB;
@@ -313,7 +313,7 @@ const ComplexityComparison = ({ complexityA, complexityB, labelA, labelB }) => {
                             <tr>
                                 <th style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text-tertiary)', fontWeight: 600, fontSize: '10px' }}>Metric</th>
                                 <th style={{ textAlign: 'center', padding: '4px 8px', color: '#60a5fa', fontWeight: 600, fontSize: '10px' }}>{labelA}</th>
-                                <th style={{ textAlign: 'center', padding: '4px 8px', color: '#a78bfa', fontWeight: 600, fontSize: '10px' }}>{labelB}</th>
+                                <th style={{ textAlign: 'center', padding: '4px 8px', color: 'var(--sql-join)', fontWeight: 600, fontSize: '10px' }}>{labelB}</th>
                                 <th style={{ textAlign: 'center', padding: '4px 8px', color: 'var(--text-tertiary)', fontWeight: 600, fontSize: '10px' }}>Δ</th>
                             </tr>
                         </thead>
@@ -363,7 +363,7 @@ const BusinessRulesComparison = ({ rulesA, rulesB, labelA, labelB }) => {
     const sections = ['filters', 'case_logic', 'having', 'aggregations'];
     const sectionMeta = {
         filters: { label: 'WHERE Filters', icon: <Filter size={11} />, color: '#60a5fa' },
-        case_logic: { label: 'CASE Logic', icon: <GitBranch size={11} />, color: '#a78bfa' },
+        case_logic: { label: 'CASE Logic', icon: <GitBranch size={11} />, color: 'var(--sql-join)' },
         having: { label: 'HAVING', icon: <Filter size={11} />, color: '#fbbf24' },
         aggregations: { label: 'Aggregations', icon: <Zap size={11} />, color: '#34d399' },
     };
@@ -379,7 +379,7 @@ const BusinessRulesComparison = ({ rulesA, rulesB, labelA, labelB }) => {
                 <Filter size={12} /> Business Rules
                 <span style={{ fontSize: '9px', fontWeight: 700, background: 'rgba(96, 165, 250, 0.12)', color: '#60a5fa', padding: '2px 6px', borderRadius: '4px' }}>{totalA}</span>
                 <span style={{ color: 'var(--text-tertiary)', fontSize: '10px' }}>vs</span>
-                <span style={{ fontSize: '9px', fontWeight: 700, background: 'rgba(167, 139, 250, 0.12)', color: '#a78bfa', padding: '2px 6px', borderRadius: '4px' }}>{totalB}</span>
+                <span style={{ fontSize: '9px', fontWeight: 700, background: 'rgba(167, 139, 250, 0.12)', color: 'var(--sql-join)', padding: '2px 6px', borderRadius: '4px' }}>{totalB}</span>
             </div>
             {isOpen && (
                 <div style={{ border: '1px solid var(--border-default)', borderRadius: '10px', padding: '12px', background: 'var(--surface-inset)' }}>

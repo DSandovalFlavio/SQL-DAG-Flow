@@ -36,6 +36,24 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 CURRENT_DIRECTORY = os.getcwd() # Default, updated by start()
 DIAGRAM_FILE = "sql_diagram.json"
 
+# Parse cache to avoid re-parsing on concurrent/rapid requests
+_parse_cache = {"key": None, "tables": None, "time": 0}
+PARSE_CACHE_TTL = 5  # seconds
+
+def _cached_parse(directory, subfolders_tuple, dialect):
+    """Parse with simple TTL cache. Prevents re-parsing on concurrent requests."""
+    cache_key = (directory, subfolders_tuple, dialect)
+    now = time.time()
+    if _parse_cache["key"] == cache_key and (now - _parse_cache["time"]) < PARSE_CACHE_TTL:
+        return _parse_cache["tables"]
+    
+    subfolders_list = list(subfolders_tuple) if subfolders_tuple else None
+    tables = parse_sql_files(directory, allowed_subfolders=subfolders_list, dialect=dialect)
+    _parse_cache["key"] = cache_key
+    _parse_cache["tables"] = tables
+    _parse_cache["time"] = now
+    return tables
+
 @app.get("/graph")
 def get_graph(dialect: str = "bigquery", discovery: bool = False, expanded_nodes: str = ""):
     """Parses SQL files in the current directory and returns graph data."""
@@ -43,9 +61,14 @@ def get_graph(dialect: str = "bigquery", discovery: bool = False, expanded_nodes
         return {"nodes": [], "edges": [], "cycles": [], "error": "Directory not found"}
         
     exp_nodes_list = [n.strip() for n in expanded_nodes.split(",")] if expanded_nodes else []
-    tables = parse_sql_files(CURRENT_DIRECTORY, dialect=dialect)
-    nodes, edges, cycles = build_graph(tables, discovery_mode=discovery, expanded_nodes=exp_nodes_list)
-    return {"nodes": nodes, "edges": edges, "cycles": cycles}
+    try:
+        tables = _cached_parse(CURRENT_DIRECTORY, None, dialect)
+        nodes, edges, cycles = build_graph(tables, discovery_mode=discovery, expanded_nodes=exp_nodes_list)
+        return {"nodes": nodes, "edges": edges, "cycles": cycles}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"nodes": [], "edges": [], "error": f"Backend Error: {str(e)}"}
 
 @app.post("/config/path")
 def set_path(path_data: dict = Body(...)):
@@ -56,8 +79,8 @@ def set_path(path_data: dict = Body(...)):
     if not path or not os.path.exists(path):
         raise HTTPException(status_code=400, detail="Directory does not exist")
     
-    
     CURRENT_DIRECTORY = path
+    _parse_cache["key"] = None  # Invalidate cache on path change
     return {"message": "Path updated", "path": CURRENT_DIRECTORY}
 
 @app.post("/scan/folders")
@@ -99,9 +122,14 @@ def get_filtered_graph(data: dict = Body(...)):
     discovery = data.get("discovery", False)
     expanded_nodes = data.get("expanded_nodes", [])
     
-    tables = parse_sql_files(CURRENT_DIRECTORY, allowed_subfolders=subfolders, dialect=dialect)
-    nodes, edges, cycles = build_graph(tables, discovery_mode=discovery, expanded_nodes=expanded_nodes)
-    return {"nodes": nodes, "edges": edges, "cycles": cycles}
+    try:
+        tables = _cached_parse(CURRENT_DIRECTORY, tuple(subfolders) if subfolders else None, dialect)
+        nodes, edges, cycles = build_graph(tables, discovery_mode=discovery, expanded_nodes=expanded_nodes)
+        return {"nodes": nodes, "edges": edges, "cycles": cycles}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"nodes": [], "edges": [], "error": f"Backend Error: {str(e)}"}
 
 @app.get("/config/path")
 def get_path():

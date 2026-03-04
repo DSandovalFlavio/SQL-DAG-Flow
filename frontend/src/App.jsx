@@ -4,7 +4,7 @@ import '@xyflow/react/dist/style.css';
 // import dagre from 'dagre'; // Removed in favor of ELK
 import { getLayoutedElements } from './algorithms/elk';
 import { toPng, toSvg } from 'html-to-image';
-import { fetchGraph, saveGraph, loadGraphState, setPath, getPath, scanFolders, fetchFilteredGraph, moveFile, exportDataDictionary } from './api';
+import { fetchGraph, saveGraph, loadGraphState, setPath, getPath, scanFolders, fetchFilteredGraph, moveFile, exportDataDictionary, fetchConfigFiles } from './api';
 import './index.css';
 import CustomNode from './CustomNode';
 import AnnotationNode from './AnnotationNode';
@@ -84,6 +84,9 @@ const Flow = () => {
   const [refreshDiff, setRefreshDiff] = useState(null);
   const [tourOpen, setTourOpen] = useState(false);
   const [comparisonNodes, setComparisonNodes] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showStartup, setShowStartup] = useState(false);
+  const [startupConfigs, setStartupConfigs] = useState([]);
 
   const nodeTypes = useMemo(() => ({ custom: CustomNode, annotation: AnnotationNode }), []);
 
@@ -648,30 +651,16 @@ const Flow = () => {
       const pathData = await getPath();
       if (pathData.path) setCurrentPath(pathData.path);
 
-      const savedState = await loadGraphState();
-      if (savedState && savedState.nodes && savedState.nodes.length > 0) {
-        setNodes(savedState.nodes.map(n => ({
-          ...n,
-          hidden: !visibleLayers[n.data.layer || 'other'] || (savedState.metadata?.hiddenNodeIds || []).includes(n.id),
-          data: {
-            ...n.data,
-            onContextMenu: n.type === 'custom' ? onNodeContextMenu : undefined,
-            onEdit: n.type === 'annotation' ? onEdit : undefined,
-            onHide: n.type === 'custom' ? handleHideNode : undefined,
-            theme, styleMode: nodeStyle, palette, showCounts, showComplexity, showTags
-          }
-        })));
-        setEdges(savedState.edges || []);
-        if (savedState.metadata) {
-          setTheme(savedState.metadata.theme || 'dark');
-          setNodeStyle(savedState.metadata.nodeStyle || 'full');
-          setPalette(savedState.metadata.palette || 'standard');
-          setTitle(savedState.metadata.title || "SQL DAG Flow");
-          setSubtitle(savedState.metadata.subtitle || "Medallion Architecture Visualizer");
-          if (savedState.metadata.hiddenNodeIds) setHiddenNodeIds(savedState.metadata.hiddenNodeIds);
-          if (savedState.metadata.showTags !== undefined) setShowTags(savedState.metadata.showTags);
-        }
+      // Check for existing config files
+      const configData = await fetchConfigFiles(pathData.path || '.');
+      const configs = configData.files || [];
+
+      if (configs.length > 0) {
+        // Show startup selector if configs exist
+        setStartupConfigs(configs);
+        setShowStartup(true);
       } else {
+        // No configs — go straight to fresh graph
         await refreshGraphData();
       }
     };
@@ -679,153 +668,207 @@ const Flow = () => {
     // eslint-disable-next-line
   }, []);
 
-  const refreshGraphData = async (subfolders = null, modeOverride = null, clearAnnotations = false, expandedNodesOverride = null) => {
-    // Mode override allows immediate refresh with new state before re-render
-    const currentMode = modeOverride !== null ? modeOverride : discoveryMode;
-    const currentExpanded = expandedNodesOverride !== null ? expandedNodesOverride : expandedNodes;
-
-    // Use provided subfolders, or fall back to state, or null (all)
-    const foldersToUse = subfolders !== null ? subfolders : selectedSubfolders;
-
-    let data;
-    if (foldersToUse) {
-      data = await fetchFilteredGraph(foldersToUse, dialect, currentMode, currentExpanded);
-    } else {
-      data = await fetchGraph({ dialect, discovery: currentMode, expanded_nodes: currentExpanded.join(',') });
-    }
-
-    if (data.error) return;
-
-    // Store cycle warnings
-    if (data.cycles) setCycles(data.cycles);
-
-    // ===== Diff View: Compare old vs new graph =====
-    const oldNodeIds = new Set(nodes.filter(n => n.type !== 'annotation').map(n => n.id));
-    const newNodeIds = new Set(data.nodes.map(n => n.id));
-    const addedIds = [...newNodeIds].filter(id => !oldNodeIds.has(id));
-    const removedIds = [...oldNodeIds].filter(id => !newNodeIds.has(id));
-    // Detect changed nodes (content hash changed)
-    let changedCount = 0;
-    if (oldNodeIds.size > 0) {
-      data.nodes.forEach(newNode => {
-        if (oldNodeIds.has(newNode.id)) {
-          const oldNode = nodes.find(n => n.id === newNode.id);
-          if (oldNode && oldNode.data?.details?.content !== newNode.data?.details?.content) {
-            changedCount++;
+  // Startup screen: select a config or start fresh
+  const handleStartupSelect = async (configFile) => {
+    setShowStartup(false);
+    if (configFile) {
+      // Load selected config
+      setIsLoading(true);
+      try {
+        setCurrentConfigFile(configFile);
+        const savedState = await loadGraphState(currentPath || '.', configFile);
+        if (savedState && savedState.nodes && savedState.nodes.length > 0) {
+          setNodes(savedState.nodes.map(n => ({
+            ...n,
+            hidden: !visibleLayers[n.data.layer || 'other'] || (savedState.metadata?.hiddenNodeIds || []).includes(n.id),
+            data: {
+              ...n.data,
+              onContextMenu: n.type === 'custom' ? onNodeContextMenu : undefined,
+              onEdit: n.type === 'annotation' ? onEdit : undefined,
+              onAction: n.type === 'custom' ? handleApplyAction : undefined,
+              theme, styleMode: nodeStyle, palette, showCounts, showComplexity, showTags
+            }
+          })));
+          setEdges(savedState.edges || []);
+          if (savedState.metadata) {
+            setTheme(savedState.metadata.theme || 'dark');
+            setNodeStyle(savedState.metadata.nodeStyle || 'full');
+            setPalette(savedState.metadata.palette || 'standard');
+            setTitle(savedState.metadata.title || "SQL DAG Flow");
+            setSubtitle(savedState.metadata.subtitle || "Medallion Architecture Visualizer");
+            if (savedState.metadata.hiddenNodeIds) setHiddenNodeIds(savedState.metadata.hiddenNodeIds);
+            if (savedState.metadata.showTags !== undefined) setShowTags(savedState.metadata.showTags);
           }
+        } else {
+          await refreshGraphData();
         }
-      });
-    }
-    if (oldNodeIds.size > 0 && (addedIds.length > 0 || removedIds.length > 0 || changedCount > 0)) {
-      setRefreshDiff({
-        added: addedIds.map(id => {
-          const n = data.nodes.find(x => x.id === id);
-          return { id, label: n?.data?.label || id };
-        }),
-        removed: removedIds.map(id => {
-          const n = nodes.find(x => x.id === id);
-          return { id, label: n?.data?.label || id };
-        }),
-        changed: changedCount
-      });
-    }
-
-    // Capture current positions AND tags to preserve across refresh
-    const currentPositions = {};
-    const currentTags = {};
-    nodes.forEach(n => {
-      currentPositions[n.id] = n.position;
-      if (n.data?.tag) currentTags[n.id] = n.data.tag;
-    });
-
-    const styledNodes = data.nodes.map(node => {
-      const isLayerVisible = visibleLayers[node.data.layer || 'other'];
-      const isManuallyHidden = hiddenNodeIds.includes(node.id);
-      return {
-        ...node,
-        type: 'custom',
-        hidden: !isLayerVisible || isManuallyHidden,
-        position: currentPositions[node.id] || { x: 0, y: 0 },
-        data: {
-          ...node.data,
-          layer: node.data.layer || 'other',
-          theme,
-          styleMode: nodeStyle,
-          palette,
-          showTags,
-          // Preserve user-assigned tags across refresh
-          tag: currentTags[node.id] || node.data.tag || null,
-          // Critical: Attach handlers here so they persist after refresh
-          onContextMenu: onNodeContextMenu,
-          onEdit: onEdit,
-          onAction: handleApplyAction,
-          expandedNodes: currentExpanded
-        }
-      };
-    });
-
-    // Hide ghost/discovered nodes whose connected parent nodes are ALL hidden
-    // This prevents orphan ghost nodes in Discovery Mode when source nodes are hidden
-    const hiddenSet = new Set(styledNodes.filter(n => n.hidden).map(n => n.id));
-    const ghostLayers = new Set(['external', 'cte']);
-    styledNodes.forEach(node => {
-      if (node.hidden) return; // Already hidden
-      const layer = node.data?.layer || node.data?.details?.layer;
-      if (!ghostLayers.has(layer)) return; // Not a ghost node
-      // Find all edges connected to this ghost node
-      const connectedNodeIds = data.edges
-        .filter(e => e.source === node.id || e.target === node.id)
-        .map(e => e.source === node.id ? e.target : e.source);
-      // Hide if ALL connected nodes are hidden
-      if (connectedNodeIds.length > 0 && connectedNodeIds.every(id => hiddenSet.has(id))) {
-        node.hidden = true;
+      } finally {
+        setIsLoading(false);
       }
-    });
-
-    // If we have existing nodes and just refreshing data, we might want to avoid full auto-layout
-    // But if new nodes appear, we need layout.
-    // Strategy: 
-    // 1. If it's a "soft refresh" (same nodes), keep positions.
-    // 2. If new nodes, run layout ONLY if positions are 0,0 (default).
-    // However, getLayoutedElements forces layout on everything usually.
-    // Let's rely on standard layout BUT if we want to preserve manual moves, we shouldn't call getLayoutedElements 
-    // unless it's an initial load or explicit layout request.
-
-    // For now, to solve "resetting view", we will ONLY run auto-layout if it's a fresh load (no existing nodes)
-    // OR if the user explicitly asks for it (which calls onLayout separately).
-    // BUT looking at the code, typical flow is fetch -> setNodes. 
-
-    // Improved Logic:
-    // If we have current nodes, use their positions. For new nodes, use valid default (or run partial layout? hard).
-    // Simple approach for "Refresh": Don't run getLayoutedElements if enough nodes already have positions.
-
-    // Actually, the user complaint is "ignora todo y vuelve al inicio". 
-    // So avoiding getLayoutedElements on refresh is key if we want to keep manual moves.
-
-    let finalNodes = clearAnnotations ? [...styledNodes] : [...styledNodes, ...nodes.filter(n => n.type === 'annotation')];
-    let finalEdges = data.edges;
-
-    // Only run auto-layout if we really strictly need it (empty start)
-    // or if we decide new nodes need it. 
-    // IF we are refreshing, we likely want to keep existing layout.
-    if (nodes.length === 0) {
-      const layouted = await getLayoutedElements(styledNodes, data.edges);
-      finalNodes = layouted.nodes;
-      finalEdges = layouted.edges;
     } else {
-      // We preserve positions from `currentPositions` applied above.
-      // But what about NEW nodes? They are at 0,0.
-      // We can run a layout calculation but only apply it to nodes that are (0,0) and seemingly new?
-      // Dagre layout is global.
-
-      // Compromise: If user hits refresh, we assume they want data updates, not layout resets.
-      // We simply set the nodes. New nodes will stack at 0,0. 
-      // User can hit "Auto Layout" button if they want to re-organize.
-      // This is standard UX for graph tools.
+      // Start fresh
+      await refreshGraphData();
     }
+  };
 
-    setNodes(finalNodes);
-    setEdges(finalEdges);
+  const _isRefreshing = useRef(false);
+  const refreshGraphData = async (subfolders = null, modeOverride = null, clearAnnotations = false, expandedNodesOverride = null) => {
+    // Prevent concurrent calls — skip if already refreshing
+    if (_isRefreshing.current) return;
+    _isRefreshing.current = true;
+
+    setIsLoading(true);
+    try {
+      // Mode override allows immediate refresh with new state before re-render
+      const currentMode = modeOverride !== null ? modeOverride : discoveryMode;
+      const currentExpanded = expandedNodesOverride !== null ? expandedNodesOverride : expandedNodes;
+
+      // Use provided subfolders, or fall back to state, or null (all)
+      const foldersToUse = subfolders !== null ? subfolders : selectedSubfolders;
+
+      let data;
+      if (foldersToUse) {
+        data = await fetchFilteredGraph(foldersToUse, dialect, currentMode, currentExpanded);
+      } else {
+        data = await fetchGraph({ dialect, discovery: currentMode, expanded_nodes: currentExpanded.join(',') });
+      }
+
+      if (data.error) return;
+
+      // Store cycle warnings
+      if (data.cycles) setCycles(data.cycles);
+
+      // ===== Diff View: Compare old vs new graph =====
+      const oldNodeIds = new Set(nodes.filter(n => n.type !== 'annotation').map(n => n.id));
+      const newNodeIds = new Set(data.nodes.map(n => n.id));
+      const addedIds = [...newNodeIds].filter(id => !oldNodeIds.has(id));
+      const removedIds = [...oldNodeIds].filter(id => !newNodeIds.has(id));
+      // Detect changed nodes (content hash changed)
+      let changedCount = 0;
+      if (oldNodeIds.size > 0) {
+        data.nodes.forEach(newNode => {
+          if (oldNodeIds.has(newNode.id)) {
+            const oldNode = nodes.find(n => n.id === newNode.id);
+            if (oldNode && oldNode.data?.details?.content !== newNode.data?.details?.content) {
+              changedCount++;
+            }
+          }
+        });
+      }
+      if (oldNodeIds.size > 0 && (addedIds.length > 0 || removedIds.length > 0 || changedCount > 0)) {
+        setRefreshDiff({
+          added: addedIds.map(id => {
+            const n = data.nodes.find(x => x.id === id);
+            return { id, label: n?.data?.label || id };
+          }),
+          removed: removedIds.map(id => {
+            const n = nodes.find(x => x.id === id);
+            return { id, label: n?.data?.label || id };
+          }),
+          changed: changedCount
+        });
+      }
+
+      // Capture current positions AND tags to preserve across refresh
+      const currentPositions = {};
+      const currentTags = {};
+      nodes.forEach(n => {
+        currentPositions[n.id] = n.position;
+        if (n.data?.tag) currentTags[n.id] = n.data.tag;
+      });
+
+      const styledNodes = data.nodes.map(node => {
+        const isLayerVisible = visibleLayers[node.data.layer || 'other'];
+        const isManuallyHidden = hiddenNodeIds.includes(node.id);
+        return {
+          ...node,
+          type: 'custom',
+          hidden: !isLayerVisible || isManuallyHidden,
+          position: currentPositions[node.id] || { x: 0, y: 0 },
+          data: {
+            ...node.data,
+            layer: node.data.layer || 'other',
+            theme,
+            styleMode: nodeStyle,
+            palette,
+            showTags,
+            // Preserve user-assigned tags across refresh
+            tag: currentTags[node.id] || node.data.tag || null,
+            // Critical: Attach handlers here so they persist after refresh
+            onContextMenu: onNodeContextMenu,
+            onEdit: onEdit,
+            onAction: handleApplyAction,
+            expandedNodes: currentExpanded
+          }
+        };
+      });
+
+      // Hide ghost/discovered nodes whose connected parent nodes are ALL hidden
+      // This prevents orphan ghost nodes in Discovery Mode when source nodes are hidden
+      const hiddenSet = new Set(styledNodes.filter(n => n.hidden).map(n => n.id));
+      const ghostLayers = new Set(['external', 'cte']);
+      styledNodes.forEach(node => {
+        if (node.hidden) return; // Already hidden
+        const layer = node.data?.layer || node.data?.details?.layer;
+        if (!ghostLayers.has(layer)) return; // Not a ghost node
+        // Find all edges connected to this ghost node
+        const connectedNodeIds = data.edges
+          .filter(e => e.source === node.id || e.target === node.id)
+          .map(e => e.source === node.id ? e.target : e.source);
+        // Hide if ALL connected nodes are hidden
+        if (connectedNodeIds.length > 0 && connectedNodeIds.every(id => hiddenSet.has(id))) {
+          node.hidden = true;
+        }
+      });
+
+      // If we have existing nodes and just refreshing data, we might want to avoid full auto-layout
+      // But if new nodes appear, we need layout.
+      // Strategy: 
+      // 1. If it's a "soft refresh" (same nodes), keep positions.
+      // 2. If new nodes, run layout ONLY if positions are 0,0 (default).
+      // However, getLayoutedElements forces layout on everything usually.
+      // Let's rely on standard layout BUT if we want to preserve manual moves, we shouldn't call getLayoutedElements 
+      // unless it's an initial load or explicit layout request.
+
+      // For now, to solve "resetting view", we will ONLY run auto-layout if it's a fresh load (no existing nodes)
+      // OR if the user explicitly asks for it (which calls onLayout separately).
+      // BUT looking at the code, typical flow is fetch -> setNodes. 
+
+      // Improved Logic:
+      // If we have current nodes, use their positions. For new nodes, use valid default (or run partial layout? hard).
+      // Simple approach for "Refresh": Don't run getLayoutedElements if enough nodes already have positions.
+
+      // Actually, the user complaint is "ignora todo y vuelve al inicio". 
+      // So avoiding getLayoutedElements on refresh is key if we want to keep manual moves.
+
+      let finalNodes = clearAnnotations ? [...styledNodes] : [...styledNodes, ...nodes.filter(n => n.type === 'annotation')];
+      let finalEdges = data.edges;
+
+      // Only run auto-layout if we really strictly need it (empty start)
+      // or if we decide new nodes need it. 
+      // IF we are refreshing, we likely want to keep existing layout.
+      if (nodes.length === 0) {
+        const layouted = await getLayoutedElements(styledNodes, data.edges);
+        finalNodes = layouted.nodes;
+        finalEdges = layouted.edges;
+      } else {
+        // We preserve positions from `currentPositions` applied above.
+        // But what about NEW nodes? They are at 0,0.
+        // We can run a layout calculation but only apply it to nodes that are (0,0) and seemingly new?
+        // Dagre layout is global.
+
+        // Compromise: If user hits refresh, we assume they want data updates, not layout resets.
+        // We simply set the nodes. New nodes will stack at 0,0. 
+        // User can hit "Auto Layout" button if they want to re-organize.
+        // This is standard UX for graph tools.
+      }
+
+      setNodes(finalNodes);
+      setEdges(finalEdges);
+    } finally {
+      _isRefreshing.current = false;
+      setIsLoading(false);
+    }
   };
 
   // Helper: Navigate to node from breadcrumb
@@ -885,7 +928,7 @@ const Flow = () => {
 
   // Load Config Handler
   const handleLoadConfig = async () => {
-    const result = await import('./api').then(m => m.fetchConfigFiles(currentPath));
+    const result = await fetchConfigFiles(currentPath);
     setAvailableConfigs(result.files || []);
     setConfigListModalOpen(true);
   };
@@ -1388,7 +1431,7 @@ const Flow = () => {
                       position: 'absolute',
                       top: '2px', left: discoveryMode ? '16px' : '2px',
                       width: '14px', height: '14px',
-                      background: '#fff',
+                      background: 'var(--surface-elevated)',
                       borderRadius: '50%',
                       transition: 'left 0.2s',
                       boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
@@ -1880,6 +1923,116 @@ const Flow = () => {
           />
         )}
       </ReactFlow>
+      {isLoading && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          background: theme === 'dark' ? 'rgba(13,13,13,0.85)' : 'rgba(247,246,243,0.88)',
+          zIndex: 1000, backdropFilter: 'blur(8px)', gap: '16px',
+          animation: 'fadeIn 0.2s ease'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <RefreshCw size={20} style={{ color: 'var(--accent-primary)', animation: 'spin 1s linear infinite' }} />
+            <span style={{ color: 'var(--text-primary)', fontSize: '15px', fontWeight: 600, fontFamily: "'Inter', sans-serif" }}>
+              Analyzing SQL files...
+            </span>
+          </div>
+          <div style={{
+            width: '240px', height: '4px', borderRadius: '4px',
+            background: 'var(--surface-elevated)', overflow: 'hidden'
+          }}>
+            <div style={{
+              width: '40%', height: '100%', borderRadius: '4px',
+              background: 'linear-gradient(90deg, var(--accent-primary), var(--sql-join))',
+              animation: 'loading-slide 1.2s ease-in-out infinite'
+            }} />
+          </div>
+          <span style={{ color: 'var(--text-tertiary)', fontSize: '12px', fontFamily: "'Inter', sans-serif" }}>
+            Parsing dependencies, schema & lineage
+          </span>
+        </div>
+      )}
+      {showStartup && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          background: theme === 'dark' ? 'rgba(13,13,13,0.92)' : 'rgba(247,246,243,0.92)',
+          zIndex: 1001, backdropFilter: 'blur(12px)', gap: '0px',
+          animation: 'fadeIn 0.3s ease'
+        }}>
+          <div style={{
+            background: 'var(--surface-secondary)',
+            border: '1px solid var(--border-default)',
+            borderRadius: '16px',
+            padding: '32px',
+            maxWidth: '400px',
+            width: '90%',
+            boxShadow: 'var(--shadow-xl)',
+            display: 'flex', flexDirection: 'column', gap: '20px'
+          }}>
+            {/* Header */}
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', fontFamily: "'Inter', sans-serif", marginBottom: '6px' }}>
+                SQL DAG Flow
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontFamily: "'Inter', sans-serif" }}>
+                {startupConfigs.length} saved configuration{startupConfigs.length !== 1 ? 's' : ''} found
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div style={{ height: '1px', background: 'var(--border-default)' }} />
+
+            {/* Config list */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '240px', overflowY: 'auto' }}>
+              {startupConfigs.map(file => (
+                <button
+                  key={file}
+                  onClick={() => handleStartupSelect(file)}
+                  style={{
+                    padding: '12px 14px', borderRadius: '10px',
+                    border: '1px solid var(--border-default)',
+                    background: 'var(--surface-primary)',
+                    color: 'var(--text-primary)', cursor: 'pointer', textAlign: 'left',
+                    fontWeight: 500, fontSize: '13px',
+                    fontFamily: "'Inter', sans-serif",
+                    transition: 'all 0.15s ease',
+                    display: 'flex', alignItems: 'center', gap: '10px'
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--interactive-hover)'; e.currentTarget.style.borderColor = 'var(--border-emphasis)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface-primary)'; e.currentTarget.style.borderColor = 'var(--border-default)'; }}
+                >
+                  <Save size={14} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Divider */}
+            <div style={{ height: '1px', background: 'var(--border-default)' }} />
+
+            {/* New project button */}
+            <button
+              onClick={() => handleStartupSelect(null)}
+              style={{
+                padding: '12px', borderRadius: '10px',
+                background: 'var(--accent-primary)',
+                color: 'var(--text-inverse)',
+                border: 'none', cursor: 'pointer',
+                fontWeight: 600, fontSize: '13px',
+                fontFamily: "'Inter', sans-serif",
+                transition: 'all 0.15s ease',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-hover)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'var(--accent-primary)'}
+            >
+              <FilePlus size={16} />
+              Start New Project
+            </button>
+          </div>
+        </div>
+      )}
       <div style={{
         position: 'absolute',
         bottom: '10px',

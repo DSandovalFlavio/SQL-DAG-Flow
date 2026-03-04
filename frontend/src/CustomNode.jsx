@@ -151,7 +151,7 @@ const CustomNode = ({ id, data }) => {
                             : details.complexity.score <= 7 ? 'var(--status-warning)'
                                 : details.complexity.score <= 12 ? '#e67e22'
                                     : 'var(--status-error)',
-                        color: '#fff',
+                        color: 'var(--text-inverse)',
                         fontSize: '9px',
                         fontWeight: 700,
                         width: '22px',
@@ -177,8 +177,8 @@ const CustomNode = ({ id, data }) => {
                         position: 'absolute',
                         top: '-8px',
                         left: '-8px',
-                        background: '#e67e22',
-                        color: '#fff',
+                        background: 'var(--status-warning)',
+                        color: 'var(--text-inverse)',
                         width: '22px',
                         height: '22px',
                         borderRadius: '50%',
