@@ -23,3 +23,6 @@ sql_diagram.json
 DEVELOPMENT.md
 
 venv
+
+.sqldagflow/
+.sql_dag_flow_cache.json

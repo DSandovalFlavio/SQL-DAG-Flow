@@ -40,7 +40,7 @@ DIAGRAM_FILE = "sql_diagram.json"
 _parse_cache = {"key": None, "tables": None, "time": 0}
 PARSE_CACHE_TTL = 5  # seconds
 
-def _cached_parse(directory, subfolders_tuple, dialect):
+def _cached_parse(directory, subfolders_tuple, dialect, visible_node_ids=None):
     """Parse with simple TTL cache. Prevents re-parsing on concurrent requests."""
     cache_key = (directory, subfolders_tuple, dialect)
     now = time.time()
@@ -48,22 +48,23 @@ def _cached_parse(directory, subfolders_tuple, dialect):
         return _parse_cache["tables"]
     
     subfolders_list = list(subfolders_tuple) if subfolders_tuple else None
-    tables = parse_sql_files(directory, allowed_subfolders=subfolders_list, dialect=dialect)
+    tables = parse_sql_files(directory, allowed_subfolders=subfolders_list, dialect=dialect, visible_node_ids=visible_node_ids)
     _parse_cache["key"] = cache_key
     _parse_cache["tables"] = tables
     _parse_cache["time"] = now
     return tables
 
 @app.get("/graph")
-def get_graph(dialect: str = "bigquery", discovery: bool = False, expanded_nodes: str = ""):
+def get_graph(dialect: str = "bigquery", discovery: bool = False, expanded_nodes: str = "", visible_node_ids: str = "", discovery_filter: str = "all"):
     """Parses SQL files in the current directory and returns graph data."""
     if not os.path.exists(CURRENT_DIRECTORY):
         return {"nodes": [], "edges": [], "cycles": [], "error": "Directory not found"}
         
     exp_nodes_list = [n.strip() for n in expanded_nodes.split(",")] if expanded_nodes else []
+    visible_list = [n.strip() for n in visible_node_ids.split(",")] if visible_node_ids else None
     try:
-        tables = _cached_parse(CURRENT_DIRECTORY, None, dialect)
-        nodes, edges, cycles = build_graph(tables, discovery_mode=discovery, expanded_nodes=exp_nodes_list)
+        tables = _cached_parse(CURRENT_DIRECTORY, None, dialect, visible_node_ids=visible_list)
+        nodes, edges, cycles = build_graph(tables, discovery_mode=discovery, expanded_nodes=exp_nodes_list, discovery_filter=discovery_filter)
         return {"nodes": nodes, "edges": edges, "cycles": cycles}
     except Exception as e:
         import traceback
@@ -117,14 +118,16 @@ def get_filtered_graph(data: dict = Body(...)):
     if not os.path.exists(CURRENT_DIRECTORY):
         return {"nodes": [], "edges": [], "error": "Directory not found"}
     
-    subfolders = data.get("subfolders") # List of strings or None
+    subfolders = data.get("subfolders")
     dialect = data.get("dialect", "bigquery")
     discovery = data.get("discovery", False)
     expanded_nodes = data.get("expanded_nodes", [])
+    visible_node_ids = data.get("visible_node_ids", None)
+    discovery_filter = data.get("discovery_filter", "all")
     
     try:
-        tables = _cached_parse(CURRENT_DIRECTORY, tuple(subfolders) if subfolders else None, dialect)
-        nodes, edges, cycles = build_graph(tables, discovery_mode=discovery, expanded_nodes=expanded_nodes)
+        tables = _cached_parse(CURRENT_DIRECTORY, tuple(subfolders) if subfolders else None, dialect, visible_node_ids=visible_node_ids)
+        nodes, edges, cycles = build_graph(tables, discovery_mode=discovery, expanded_nodes=expanded_nodes, discovery_filter=discovery_filter)
         return {"nodes": nodes, "edges": edges, "cycles": cycles}
     except Exception as e:
         import traceback

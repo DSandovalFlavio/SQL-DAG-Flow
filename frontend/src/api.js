@@ -3,7 +3,7 @@
 const isDev = typeof window !== 'undefined' && window.location.port === '5173';
 export const API_URL = isDev ? 'http://localhost:8000' : (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000');
 
-// config can be an object { dialect: '...', discovery: true/false }
+// config can be an object { dialect: '...', discovery: true/false, visible_node_ids: '...' }
 export const fetchGraph = async (config = {}) => {
     try {
         const queryParams = new URLSearchParams({ ...config, t: Date.now() }).toString();
@@ -93,7 +93,7 @@ export const scanFolders = async (path) => {
 };
 
 // subfolders is array, dialect is string
-export const fetchFilteredGraph = async (subfolders, dialect = 'bigquery', discovery = false, expanded_nodes = []) => {
+export const fetchFilteredGraph = async (subfolders, dialect = 'bigquery', discovery = false, expanded_nodes = [], visible_node_ids = null, discovery_filter = 'all') => {
     try {
         const response = await fetch(`${API_URL}/graph/filtered`, {
             method: 'POST',
@@ -103,7 +103,7 @@ export const fetchFilteredGraph = async (subfolders, dialect = 'bigquery', disco
                 'Pragma': 'no-cache',
                 'Expires': '0'
             },
-            body: JSON.stringify({ subfolders, dialect, discovery, expanded_nodes }),
+            body: JSON.stringify({ subfolders, dialect, discovery, expanded_nodes, visible_node_ids, discovery_filter }),
         });
         return await response.json();
     } catch (error) {

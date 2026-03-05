@@ -37,6 +37,7 @@ const Flow = () => {
   const [palette, setPalette] = useState('standard');
   const [dialect, setDialect] = useState('bigquery');
   const [discoveryMode, setDiscoveryMode] = useState(false);
+  const [discoveryFilter, setDiscoveryFilter] = useState('all'); // 'all' | 'external' | 'cte'
   const [expandedNodes, setExpandedNodes] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
   const [lineageNodes, setLineageNodes] = useState(null); // Set form to highlight full lineage edges
@@ -342,6 +343,7 @@ const Flow = () => {
         if (data.metadata.discoveryMode !== undefined) setDiscoveryMode(data.metadata.discoveryMode);
         if (data.metadata.expandedNodes) setExpandedNodes(data.metadata.expandedNodes);
         if (data.metadata.hiddenNodeIds) setHiddenNodeIds(data.metadata.hiddenNodeIds);
+        if (data.metadata.discoveryFilter) setDiscoveryFilter(data.metadata.discoveryFilter);
       }
       setCurrentConfigFile(filename); // Update current config file
     }
@@ -698,6 +700,9 @@ const Flow = () => {
             setSubtitle(savedState.metadata.subtitle || "Medallion Architecture Visualizer");
             if (savedState.metadata.hiddenNodeIds) setHiddenNodeIds(savedState.metadata.hiddenNodeIds);
             if (savedState.metadata.showTags !== undefined) setShowTags(savedState.metadata.showTags);
+            if (savedState.metadata.discoveryMode !== undefined) setDiscoveryMode(savedState.metadata.discoveryMode);
+            if (savedState.metadata.expandedNodes) setExpandedNodes(savedState.metadata.expandedNodes);
+            if (savedState.metadata.discoveryFilter) setDiscoveryFilter(savedState.metadata.discoveryFilter);
           }
         } else {
           await refreshGraphData();
@@ -726,11 +731,14 @@ const Flow = () => {
       // Use provided subfolders, or fall back to state, or null (all)
       const foldersToUse = subfolders !== null ? subfolders : selectedSubfolders;
 
+      // Compute visible node IDs for selective backend processing
+      const visibleIds = nodes.filter(n => !n.hidden && n.type !== 'annotation').map(n => n.id);
+
       let data;
       if (foldersToUse) {
-        data = await fetchFilteredGraph(foldersToUse, dialect, currentMode, currentExpanded);
+        data = await fetchFilteredGraph(foldersToUse, dialect, currentMode, currentExpanded, visibleIds.length > 0 ? visibleIds : null, discoveryFilter);
       } else {
-        data = await fetchGraph({ dialect, discovery: currentMode, expanded_nodes: currentExpanded.join(',') });
+        data = await fetchGraph({ dialect, discovery: currentMode, expanded_nodes: currentExpanded.join(','), visible_node_ids: visibleIds.length > 0 ? visibleIds.join(',') : '', discovery_filter: discoveryFilter });
       }
 
       if (data.error) return;
@@ -892,6 +900,17 @@ const Flow = () => {
     }
   }, [expandedNodes]);
 
+  // Refresh when discoveryFilter changes (but only if discovery is on and we have nodes)
+  const discoveryFilterRef = useRef(discoveryFilter);
+  useEffect(() => {
+    if (discoveryFilterRef.current !== discoveryFilter) {
+      discoveryFilterRef.current = discoveryFilter;
+      if (discoveryMode && nodes.length > 0) {
+        refreshGraphData(null, true);
+      }
+    }
+  }, [discoveryFilter]);
+
   // Save Handler (Save As)
   const handleSave = async () => {
     if (!rfInstance) return;
@@ -911,6 +930,7 @@ const Flow = () => {
         palette,
         dialect,
         discoveryMode,
+        discoveryFilter,
         expandedNodes,
         title,
         subtitle,
@@ -1438,6 +1458,35 @@ const Flow = () => {
                     }}></div>
                   </div>
                 </button>
+
+                {/* Discovery Filter (shown when discovery is on) */}
+                {discoveryMode && (
+                  <div style={{
+                    display: 'flex', gap: '4px', padding: '4px',
+                    background: 'var(--surface-primary)',
+                    borderRadius: '8px', border: '1px solid var(--border-default)'
+                  }}>
+                    {[['all', 'Both'], ['external', 'External'], ['cte', 'CTEs']].map(([val, label]) => (
+                      <button
+                        key={val}
+                        onClick={() => {
+                          setDiscoveryFilter(val);
+                        }}
+                        style={{
+                          flex: 1, padding: '5px 8px',
+                          fontSize: '10px', fontWeight: 600,
+                          borderRadius: '6px', cursor: 'pointer',
+                          border: 'none',
+                          background: discoveryFilter === val ? 'var(--accent-primary)' : 'transparent',
+                          color: discoveryFilter === val ? '#fff' : 'var(--text-secondary)',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -1,10 +1,50 @@
 import os
 import re
 import time
+import json
+import hashlib
 import sqlglot
 from sqlglot import exp
 from sqlglot.optimizer.qualify_columns import qualify_columns as sqlglot_qualify_columns
 import networkx as nx
+
+
+# ===== Persistent File Cache =====
+CACHE_DIR = ".sqldagflow"
+CACHE_FILENAME = "cache.json"
+
+def _get_cache_path(directory):
+    return os.path.join(directory, CACHE_DIR, CACHE_FILENAME)
+
+def _load_cache(directory):
+    """Load parse cache from disk. Returns empty dict if not found."""
+    cache_path = _get_cache_path(directory)
+    try:
+        if os.path.exists(cache_path):
+            with open(cache_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"  Cache load error (will rebuild): {e}")
+    return {}
+
+def _save_cache(directory, cache):
+    """Save parse cache to disk."""
+    cache_path = _get_cache_path(directory)
+    cache_dir = os.path.dirname(cache_path)
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(cache, f, separators=(',', ':'))
+    except Exception as e:
+        print(f"  Cache save error: {e}")
+
+def _file_cache_key(filepath):
+    """Cache key = filepath mtime + size for fast invalidation."""
+    try:
+        stat = os.stat(filepath)
+        return f"{stat.st_mtime_ns}:{stat.st_size}"
+    except Exception:
+        return None
 
 
 def extract_output_columns(parsed, dialect="bigquery"):
@@ -83,14 +123,23 @@ def extract_output_columns(parsed, dialect="bigquery"):
 
     return columns
 
-def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
+def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visible_node_ids=None):
     """
     Recursively scans a directory for .sql files and parses them.
     Returns a dictionary mapping table names to their dependencies and metadata.
+    
+    Uses persistent mtime-based cache to skip re-parsing unchanged files.
+    If visible_node_ids is provided, qualify_columns and column_lineage
+    are only computed for visible nodes (performance optimization).
     """
     tables = {}
+    cache = _load_cache(directory)
+    cache_hits = 0
+    cache_misses = 0
     
     for root, dirs, files in os.walk(directory):
+        # Skip hidden config folders like .sqldagflow
+        dirs[:] = [d for d in dirs if not d.startswith('.')]
         # Filter subfolders if allowed_subfolders is specified
         if allowed_subfolders is not None:
              # allowed_subfolders contains relative paths like "sub1", "sub1/nested"
@@ -179,6 +228,17 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                     layer = "silver"
                 elif "gold" in lower_path:
                     layer = "gold"
+                
+                # ===== Cache check: skip re-parsing if file unchanged =====
+                file_key = _file_cache_key(filepath)
+                cached_entry = cache.get(filepath)
+                if cached_entry and cached_entry.get("cache_key") == file_key and cached_entry.get("dialect") == dialect:
+                    # Cache hit — use stored parse result
+                    tables[filename_base] = cached_entry["data"]
+                    cache_hits += 1
+                    continue
+                
+                cache_misses += 1
                 
                 with open(filepath, "r", encoding="utf-8") as f:
                     sql_content = f.read()
@@ -545,8 +605,38 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
                         "error": str(e),
                         "content": sql_content
                     }
+                
+                # ===== Save to cache after parsing (success or error) =====
+                if filename_base in tables:
+                    file_key = _file_cache_key(filepath)
+                    if file_key:
+                        # Store a cache-safe copy (no sets, convert to lists)
+                        cache_data = {}
+                        for k, v in tables[filename_base].items():
+                            if isinstance(v, set):
+                                cache_data[k] = list(v)
+                            elif isinstance(v, dict):
+                                cache_data[k] = {
+                                    dk: list(dv) if isinstance(dv, set) else dv 
+                                    for dk, dv in v.items()
+                                }
+                            else:
+                                cache_data[k] = v
+                        cache[filepath] = {
+                            "cache_key": file_key,
+                            "dialect": dialect,
+                            "data": cache_data
+                        }
+
+    # ===== Cache stats & persist =====
+    total_files = cache_hits + cache_misses
+    if total_files > 0:
+        print(f"  Parse cache: {cache_hits}/{total_files} hits ({cache_misses} re-parsed)")
+    _save_cache(directory, cache)
+    
     # ===== Second Pass: Qualify Columns & Column Lineage =====
     # Build a global schema dict for qualify_columns and lineage
+    # (schema building is always done for ALL tables — it's fast)
     global_schema = {}  # {dataset: {table: {col: type}}}
     for tid, tdata in tables.items():
         schema_cols = tdata.get("schema", [])
@@ -567,8 +657,13 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
     
     # Re-extract column_references using qualify_columns for precision
     # Protected with per-table time budget to prevent hanging on large projects
+    # If visible_node_ids provided, only qualify visible nodes (performance)
     qualify_tables = [(tid, tdata) for tid, tdata in tables.items() 
                       if not tdata.get("error") and tdata.get("content")]
+    if visible_node_ids is not None:
+        visible_set = set(visible_node_ids)
+        qualify_tables = [(tid, tdata) for tid, tdata in qualify_tables if tid in visible_set]
+        print(f"  Selective qualify: {len(qualify_tables)} visible of {len(tables)} total")
     total_qualify = len(qualify_tables)
     
     for idx, (tid, tdata) in enumerate(qualify_tables):
@@ -650,12 +745,17 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
     # ===== Column-Level Lineage =====
     # For each table, trace how each output column derives from source columns
     # Protected: skip if project is very large (>100 tables) and cap columns per table
+    # If visible_node_ids provided, only compute lineage for visible nodes
     MAX_LINEAGE_TABLES = 500
     MAX_COLS_PER_TABLE = 30
     LINEAGE_TIME_BUDGET = 1.5  # seconds per table
     
     lineage_tables = [(tid, tdata) for tid, tdata in tables.items()
                       if not tdata.get("error") and tdata.get("content") and tdata.get("schema")]
+    if visible_node_ids is not None:
+        visible_set = set(visible_node_ids)
+        lineage_tables = [(tid, tdata) for tid, tdata in lineage_tables if tid in visible_set]
+        print(f"  Selective lineage: {len(lineage_tables)} visible of {len(tables)} total")
     total_lineage = len(lineage_tables)
     
     if total_lineage > MAX_LINEAGE_TABLES:
@@ -725,12 +825,13 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery"):
     return tables
 
 
-def build_graph(tables, discovery_mode=False, expanded_nodes=None):
+def build_graph(tables, discovery_mode=False, expanded_nodes=None, discovery_filter='all'):
     """
     Constructs nodes and edges for React Flow.
     If discovery_mode is True, creates 'ghost' nodes for dependencies 
     that are not found in the parsed tables.
     Also creates ghost nodes for any node whose ID is in expanded_nodes list.
+    discovery_filter: 'all' | 'external' | 'cte' — controls which ghost types to show.
     """
     nodes = []
     edges = []
@@ -790,7 +891,7 @@ def build_graph(tables, discovery_mode=False, expanded_nodes=None):
                          cte_name = ":".join(parts[2:])
                          cte_internal_deps = tables[source_id].get("cte_deps", {}).get(cte_name, {})
                          
-                         if discovery_mode or (expanded_nodes and source_id in expanded_nodes):
+                         if (discovery_mode and discovery_filter in ('all', 'cte')) or (expanded_nodes and source_id in expanded_nodes):
                              # Discovery Mode or Expanded: Create CTE ghost node with incoming edges
                              cte_id = dep
                              
@@ -885,7 +986,7 @@ def build_graph(tables, discovery_mode=False, expanded_nodes=None):
                      continue
 
                  # Handle missing external nodes (discovery mode or expanded node only)
-                 if (discovery_mode or (expanded_nodes and source_id in expanded_nodes)) and not target_id:
+                 if ((discovery_mode and discovery_filter in ('all', 'external')) or (expanded_nodes and source_id in expanded_nodes)) and not target_id:
                          # Create a unique ID for the missing node
                          # Use the full dependency name as the ID
                          ghost_id = dep
