@@ -4,7 +4,7 @@ import '@xyflow/react/dist/style.css';
 // import dagre from 'dagre'; // Removed in favor of ELK
 import { getLayoutedElements } from './algorithms/elk';
 import { toPng, toSvg } from 'html-to-image';
-import { fetchGraph, saveGraph, loadGraphState, setPath, getPath, scanFolders, fetchFilteredGraph, moveFile, exportDataDictionary, fetchConfigFiles } from './api';
+import { fetchGraph, saveGraph, loadGraphState, setPath, getPath, scanFolders, fetchFilteredGraph, moveFile, exportDataDictionary, fetchConfigFiles, fetchScopedGraph, scanNewModels, fetchGitChanges } from './api';
 import './index.css';
 import CustomNode from './CustomNode';
 import AnnotationNode from './AnnotationNode';
@@ -17,7 +17,7 @@ import {
   Menu, Layout,
   FolderOpen, FilePlus, Save, Image, Ruler,
   Moon, Sun, Eye, EyeOff, Grid, MessageSquare, BoxSelect, Settings,
-  Hand, MousePointer2, RefreshCw, Globe, BarChart3, Zap, Tag, Download, AlertTriangle as AlertTriangleIcon, Compass
+  Hand, MousePointer2, RefreshCw, Globe, BarChart3, Zap, Tag, Download, AlertTriangle as AlertTriangleIcon, Compass, Search, GitBranch
 } from 'lucide-react';
 import SelectionToolbar from './SelectionToolbar';
 import LayerStats from './LayerStats';
@@ -38,7 +38,7 @@ const Flow = () => {
   const [dialect, setDialect] = useState('bigquery');
   const [discoveryMode, setDiscoveryMode] = useState(false);
   const [discoveryFilter, setDiscoveryFilter] = useState('all'); // 'all' | 'external' | 'cte'
-  const [expandedNodes, setExpandedNodes] = useState([]);
+  const [expandedNodes, setExpandedNodes] = useState({});
   const [selectedNode, setSelectedNode] = useState(null);
   const [lineageNodes, setLineageNodes] = useState(null); // Set form to highlight full lineage edges
   const [detailsNode, setDetailsNode] = useState(null); // Separate state for side panel
@@ -88,6 +88,12 @@ const Flow = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showStartup, setShowStartup] = useState(false);
   const [startupConfigs, setStartupConfigs] = useState([]);
+  // When a saved view is loaded, we work in "scoped" mode: refresh only rebuilds
+  // the nodes already on the canvas (fast, no flood of newly-added files).
+  // null = full-project mode (fresh load / folder filtering).
+  const [scopedView, setScopedView] = useState(false);
+  const [gitBase, setGitBase] = useState('');
+  const [gitActive, setGitActive] = useState(false);
 
   const nodeTypes = useMemo(() => ({ custom: CustomNode, annotation: AnnotationNode }), []);
 
@@ -287,10 +293,16 @@ const Flow = () => {
         })));
         break;
       case 'expand':
-        setExpandedNodes(prev => [...new Set([...prev, nodeId])]);
+        setExpandedNodes(prev => ({ ...prev, [nodeId]: 'all' }));
+        break;
+      case 'expandExternal':
+        setExpandedNodes(prev => ({ ...prev, [nodeId]: 'external' }));
+        break;
+      case 'expandCte':
+        setExpandedNodes(prev => ({ ...prev, [nodeId]: 'cte' }));
         break;
       case 'collapse':
-        setExpandedNodes(prev => prev.filter(id => id !== nodeId));
+        setExpandedNodes(prev => { const next = { ...prev }; delete next[nodeId]; return next; });
         break;
       default:
         break;
@@ -346,6 +358,8 @@ const Flow = () => {
         if (data.metadata.discoveryFilter) setDiscoveryFilter(data.metadata.discoveryFilter);
       }
       setCurrentConfigFile(filename); // Update current config file
+      // A loaded config is a curated view → refresh stays scoped to it.
+      if (data.nodes.length > 0) setScopedView(true);
     }
   }, [setNodes, setEdges, rfInstance, visibleLayers, onNodeContextMenu, onEdit, handleApplyAction, theme, nodeStyle, palette, showCounts, showComplexity, dialect]);
 
@@ -704,14 +718,18 @@ const Flow = () => {
             if (savedState.metadata.expandedNodes) setExpandedNodes(savedState.metadata.expandedNodes);
             if (savedState.metadata.discoveryFilter) setDiscoveryFilter(savedState.metadata.discoveryFilter);
           }
+          // Curated view loaded → keep refresh scoped to these nodes.
+          setScopedView(true);
         } else {
+          setScopedView(false);
           await refreshGraphData();
         }
       } finally {
         setIsLoading(false);
       }
     } else {
-      // Start fresh
+      // Start fresh — full-project mode.
+      setScopedView(false);
       await refreshGraphData();
     }
   };
@@ -733,12 +751,18 @@ const Flow = () => {
 
       // Compute visible node IDs for selective backend processing
       const visibleIds = nodes.filter(n => !n.hidden && n.type !== 'annotation').map(n => n.id);
+      // Full set of model nodes currently on canvas = the scope of a curated view.
+      const scopeIds = nodes.filter(n => n.type !== 'annotation').map(n => n.id);
 
       let data;
-      if (foldersToUse) {
+      if (scopedView && !foldersToUse && scopeIds.length > 0) {
+        // Scoped refresh: only re-parse/rebuild the nodes already on the canvas.
+        // Newly-added files on disk are intentionally NOT pulled in (use "Scan New").
+        data = await fetchScopedGraph(scopeIds, dialect, currentMode, currentExpanded, discoveryFilter);
+      } else if (foldersToUse) {
         data = await fetchFilteredGraph(foldersToUse, dialect, currentMode, currentExpanded, visibleIds.length > 0 ? visibleIds : null, discoveryFilter);
       } else {
-        data = await fetchGraph({ dialect, discovery: currentMode, expanded_nodes: currentExpanded.join(','), visible_node_ids: visibleIds.length > 0 ? visibleIds.join(',') : '', discovery_filter: discoveryFilter });
+        data = await fetchGraph({ dialect, discovery: currentMode, expanded_nodes: Object.entries(currentExpanded).map(([id, mode]) => `${id}:${mode}`).join(','), visible_node_ids: visibleIds.length > 0 ? visibleIds.join(',') : '', discovery_filter: discoveryFilter });
       }
 
       if (data.error) return;
@@ -894,7 +918,7 @@ const Flow = () => {
 
   const expandedNodesRef = useRef(expandedNodes);
   useEffect(() => {
-    if (expandedNodesRef.current !== expandedNodes) {
+    if (JSON.stringify(expandedNodesRef.current) !== JSON.stringify(expandedNodes)) {
       expandedNodesRef.current = expandedNodes;
       refreshGraphData(null, null, false, expandedNodes);
     }
@@ -964,6 +988,7 @@ const Flow = () => {
       setNodes([]);
       setEdges([]);
       setHiddenNodeIds([]);
+      setScopedView(false);
       setCurrentConfigFile("new_config.json");
       // Trigger folder scan to start fresh, forcing update even if path is same
       handleChangePath(true);
@@ -1043,6 +1068,131 @@ const Flow = () => {
         .catch(console.error)
         .finally(() => setIsExporting(false));
     }, 100);
+  };
+
+  // Scan the project for .sql files not yet on the canvas and let the user add
+  // them on demand — instead of every refresh silently flooding the view.
+  const handleScanNew = async () => {
+    const known = nodes.filter(n => n.type !== 'annotation').map(n => n.id);
+    setIsLoading(true);
+    let res;
+    try {
+      res = await scanNewModels(known);
+    } finally {
+      setIsLoading(false);
+    }
+    const newModels = (res && res.new) || [];
+    if (newModels.length === 0) {
+      alert("No new models found. Your view is up to date.");
+      return;
+    }
+    const preview = newModels.slice(0, 20).map(m => `• ${m.path}`).join('\n');
+    const more = newModels.length > 20 ? `\n…and ${newModels.length - 20} more` : '';
+    if (!confirm(`${newModels.length} new model(s) found:\n\n${preview}${more}\n\nAdd them to the canvas?`)) return;
+
+    setIsLoading(true);
+    try {
+      const newIds = new Set(newModels.map(m => m.id));
+      const scopeIds = [...known, ...newModels.map(m => m.id)];
+      const data = await fetchScopedGraph(scopeIds, dialect, discoveryMode, expandedNodes, discoveryFilter);
+      if (data.error) return;
+      if (data.cycles) setCycles(data.cycles);
+
+      const existingIds = new Set(nodes.map(n => n.id));
+      let i = 0;
+      const styledNew = data.nodes
+        .filter(n => newIds.has(n.id) && !existingIds.has(n.id))
+        .map(node => {
+          const pos = { x: 120 + (i % 5) * 280, y: 120 + Math.floor(i / 5) * 170 };
+          i++;
+          return {
+            ...node,
+            type: 'custom',
+            hidden: !visibleLayers[node.data.layer || 'other'],
+            position: pos,
+            data: {
+              ...node.data,
+              layer: node.data.layer || 'other',
+              theme, styleMode: nodeStyle, palette, showCounts, showComplexity, showTags,
+              onContextMenu: onNodeContextMenu,
+              onEdit,
+              onAction: handleApplyAction,
+              expandedNodes,
+            }
+          };
+        });
+
+      setNodes(prev => [...prev, ...styledNew]);
+      setEdges(data.edges);
+      setScopedView(true);
+      alert(`Added ${styledNew.length} new model(s). Tip: use Auto Layout to reorganize.`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+
+  // Highlight the models changed in git plus their downstream blast radius.
+  // Answers "what does this change affect?" straight on the canvas.
+  const handleGitChanges = async () => {
+    const base = prompt("Compare against branch (leave blank for uncommitted working-tree changes):", gitBase || '');
+    if (base === null) return; // cancelled
+    const trimmed = base.trim();
+    setGitBase(trimmed);
+    setIsLoading(true);
+    let res;
+    try {
+      res = await fetchGitChanges(trimmed);
+    } finally {
+      setIsLoading(false);
+    }
+    if (!res.is_git) {
+      alert("This project folder is not a git repository.");
+      return;
+    }
+    const changedSet = new Set(res.changed);
+    const onCanvas = new Set(nodesRef.current.filter(n => n.type !== 'annotation').map(n => n.id));
+    const changedOnCanvas = res.changed.filter(id => onCanvas.has(id));
+
+    // Downstream descendants (blast radius) via a forward BFS over edges.
+    const adj = {};
+    edgesRef.current.forEach(e => { (adj[e.source] = adj[e.source] || []).push(e.target); });
+    const downstream = new Set();
+    const queue = [...changedOnCanvas];
+    while (queue.length) {
+      const cur = queue.shift();
+      (adj[cur] || []).forEach(t => {
+        if (!downstream.has(t) && !changedSet.has(t)) { downstream.add(t); queue.push(t); }
+      });
+    }
+
+    setNodes(nds => nds.map(n => {
+      if (n.type === 'annotation') return n;
+      let status = null;
+      if (changedSet.has(n.id)) status = 'changed';
+      else if (downstream.has(n.id)) status = 'downstream';
+      return { ...n, data: { ...n.data, gitStatus: status } };
+    }));
+    setGitActive(true);
+
+    const affected = [...changedOnCanvas, ...downstream];
+    if (affected.length > 0 && rfInstanceRef.current) {
+      setTimeout(() => rfInstanceRef.current.fitView({ nodes: affected.map(id => ({ id })), padding: 0.25, duration: 600 }), 60);
+    }
+
+    const label = trimmed ? ` (vs ${trimmed})` : ' (working tree)';
+    if (res.changed.length === 0) {
+      alert("No changed SQL models found" + label + ".");
+    } else if (changedOnCanvas.length === 0) {
+      alert(`${res.changed.length} changed model(s) found${label}, but none are on the current canvas. Try "Scan New" or load the full project.`);
+    } else {
+      alert(`${changedOnCanvas.length} changed model(s) · ${downstream.size} downstream impacted${label}.`);
+    }
+  };
+
+  const clearGitHighlight = () => {
+    setNodes(nds => nds.map(n => (n.data && n.data.gitStatus) ? { ...n, data: { ...n.data, gitStatus: null } } : n));
+    setGitActive(false);
   };
 
   const handleChangePath = async (force = false) => {
@@ -1179,6 +1329,20 @@ const Flow = () => {
               style={topButtonStyle}
             >
               <RefreshCw size={16} /> Refresh
+            </button>
+            <button
+              onClick={handleScanNew}
+              title="Scan project for new SQL models not on the canvas"
+              style={topButtonStyle}
+            >
+              <Search size={16} /> Scan New
+            </button>
+            <button
+              onClick={gitActive ? clearGitHighlight : handleGitChanges}
+              title={gitActive ? "Clear git change highlight" : "Highlight git-changed models and their downstream impact"}
+              style={{ ...topButtonStyle, ...(gitActive ? { color: 'var(--accent-primary)', borderColor: 'var(--accent-primary)' } : {}) }}
+            >
+              <GitBranch size={16} /> {gitActive ? 'Clear Git' : 'Git Changes'}
             </button>
             <div style={{ width: 1, height: 20, background: 'var(--border-emphasis)', margin: '0 4px' }}></div>
 
@@ -1952,6 +2116,7 @@ const Flow = () => {
         selectionMode={selectionMode === 'select' ? 'partial' : undefined}
         onPaneContextMenu={onPaneContextMenu}
         nodeTypes={nodeTypes}
+        onlyRenderVisibleElements={!isExporting}
         fitView
         colorMode={theme}
         onInit={setRfInstance}

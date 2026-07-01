@@ -14,6 +14,7 @@ import time
 import socket
 import argparse
 import shutil
+import subprocess
 from .parser import parse_sql_files, build_graph
 
 app = FastAPI()
@@ -40,15 +41,16 @@ DIAGRAM_FILE = "sql_diagram.json"
 _parse_cache = {"key": None, "tables": None, "time": 0}
 PARSE_CACHE_TTL = 5  # seconds
 
-def _cached_parse(directory, subfolders_tuple, dialect, visible_node_ids=None):
+def _cached_parse(directory, subfolders_tuple, dialect, visible_node_ids=None, target_ids=None):
     """Parse with simple TTL cache. Prevents re-parsing on concurrent requests."""
-    cache_key = (directory, subfolders_tuple, dialect)
+    target_key = tuple(sorted(target_ids)) if target_ids else None
+    cache_key = (directory, subfolders_tuple, dialect, target_key)
     now = time.time()
     if _parse_cache["key"] == cache_key and (now - _parse_cache["time"]) < PARSE_CACHE_TTL:
         return _parse_cache["tables"]
-    
+
     subfolders_list = list(subfolders_tuple) if subfolders_tuple else None
-    tables = parse_sql_files(directory, allowed_subfolders=subfolders_list, dialect=dialect, visible_node_ids=visible_node_ids)
+    tables = parse_sql_files(directory, allowed_subfolders=subfolders_list, dialect=dialect, visible_node_ids=visible_node_ids, target_ids=target_ids)
     _parse_cache["key"] = cache_key
     _parse_cache["tables"] = tables
     _parse_cache["time"] = now
@@ -60,11 +62,22 @@ def get_graph(dialect: str = "bigquery", discovery: bool = False, expanded_nodes
     if not os.path.exists(CURRENT_DIRECTORY):
         return {"nodes": [], "edges": [], "cycles": [], "error": "Directory not found"}
         
-    exp_nodes_list = [n.strip() for n in expanded_nodes.split(",")] if expanded_nodes else []
+    # Parse expanded_nodes as dict {node_id: mode}
+    exp_nodes_dict = {}
+    if expanded_nodes:
+        for item in expanded_nodes.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            parts = item.rsplit(":", 1)
+            if len(parts) == 2 and parts[1] in ("all", "external", "cte"):
+                exp_nodes_dict[parts[0]] = parts[1]
+            else:
+                exp_nodes_dict[item] = "all"
     visible_list = [n.strip() for n in visible_node_ids.split(",")] if visible_node_ids else None
     try:
         tables = _cached_parse(CURRENT_DIRECTORY, None, dialect, visible_node_ids=visible_list)
-        nodes, edges, cycles = build_graph(tables, discovery_mode=discovery, expanded_nodes=exp_nodes_list, discovery_filter=discovery_filter)
+        nodes, edges, cycles = build_graph(tables, discovery_mode=discovery, expanded_nodes=exp_nodes_dict, discovery_filter=discovery_filter)
         return {"nodes": nodes, "edges": edges, "cycles": cycles}
     except Exception as e:
         import traceback
@@ -121,7 +134,10 @@ def get_filtered_graph(data: dict = Body(...)):
     subfolders = data.get("subfolders")
     dialect = data.get("dialect", "bigquery")
     discovery = data.get("discovery", False)
-    expanded_nodes = data.get("expanded_nodes", [])
+    expanded_nodes = data.get("expanded_nodes", {})
+    # Normalize: if frontend sends a list (legacy), convert to dict
+    if isinstance(expanded_nodes, list):
+        expanded_nodes = {n: 'all' for n in expanded_nodes}
     visible_node_ids = data.get("visible_node_ids", None)
     discovery_filter = data.get("discovery_filter", "all")
     
@@ -134,6 +150,143 @@ def get_filtered_graph(data: dict = Body(...)):
         traceback.print_exc()
         return {"nodes": [], "edges": [], "error": f"Backend Error: {str(e)}"}
 
+@app.post("/graph/scoped")
+def get_scoped_graph(data: dict = Body(...)):
+    """Parse + build the graph for ONLY the given node ids (a saved view).
+
+    This is the fast path for reopening/refreshing a curated diagram: files
+    outside the scope are never parsed, and newly-added files never appear
+    unless the user explicitly adds them (see /scan/new). Any dependency that
+    points outside the scope simply stays unresolved rather than flooding the
+    canvas.
+    """
+    if not os.path.exists(CURRENT_DIRECTORY):
+        return {"nodes": [], "edges": [], "cycles": [], "error": "Directory not found"}
+
+    node_ids = data.get("node_ids") or []
+    if not node_ids:
+        return {"nodes": [], "edges": [], "cycles": []}
+
+    dialect = data.get("dialect", "bigquery")
+    discovery = data.get("discovery", False)
+    expanded_nodes = data.get("expanded_nodes", {})
+    if isinstance(expanded_nodes, list):
+        expanded_nodes = {n: 'all' for n in expanded_nodes}
+    discovery_filter = data.get("discovery_filter", "all")
+
+    try:
+        tables = _cached_parse(
+            CURRENT_DIRECTORY, None, dialect,
+            visible_node_ids=node_ids, target_ids=node_ids,
+        )
+        nodes, edges, cycles = build_graph(
+            tables, discovery_mode=discovery,
+            expanded_nodes=expanded_nodes, discovery_filter=discovery_filter,
+        )
+        return {"nodes": nodes, "edges": edges, "cycles": cycles}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"nodes": [], "edges": [], "error": f"Backend Error: {str(e)}"}
+
+
+@app.post("/scan/new")
+def scan_new_files(data: dict = Body(...)):
+    """List .sql models present on disk but not in the caller's known set.
+
+    Pure filesystem walk — no SQL parsing — so it stays instant even on huge
+    projects. Lets the UI say "5 new models found. Add?" instead of silently
+    re-indexing everything on refresh.
+    """
+    if not os.path.exists(CURRENT_DIRECTORY):
+        return {"new": []}
+
+    known = set(data.get("known_ids") or [])
+    new_models = []
+    seen = set()
+    for root, dirs, files in os.walk(CURRENT_DIRECTORY):
+        dirs[:] = [d for d in dirs if not d.startswith('.')]
+        for f in files:
+            if not f.endswith(".sql"):
+                continue
+            node_id = os.path.splitext(f)[0]
+            if node_id in known or node_id in seen:
+                continue
+            seen.add(node_id)
+            rel = os.path.relpath(os.path.join(root, f), CURRENT_DIRECTORY).replace(os.sep, '/')
+            new_models.append({"id": node_id, "path": rel})
+    new_models.sort(key=lambda m: m["path"])
+    return {"new": new_models}
+
+
+def _run_git(args, timeout=10):
+    """Run a git command inside CURRENT_DIRECTORY, return stdout or None on failure."""
+    try:
+        r = subprocess.run(
+            ["git", "-C", CURRENT_DIRECTORY] + args,
+            capture_output=True, text=True, timeout=timeout,
+        )
+        if r.returncode != 0:
+            return None
+        return r.stdout
+    except Exception:
+        return None
+
+
+@app.get("/git/changes")
+def git_changes(base: str = ""):
+    """Return the .sql models changed in the current git working tree.
+
+    Maps changed files to node ids (filename base) so the UI can highlight the
+    edited models and their downstream blast radius — the core "what does this
+    PR affect?" view. If `base` (a branch/ref) is given, also includes files
+    that differ from that ref (committed changes on the current branch).
+    Degrades gracefully to {is_git:false} outside a repo.
+    """
+    inside = _run_git(["rev-parse", "--is-inside-work-tree"])
+    if inside is None or inside.strip() != "true":
+        return {"is_git": False, "changed": [], "base": base}
+
+    files = set()
+
+    # 1. Uncommitted + staged + untracked changes
+    porcelain = _run_git(["status", "--porcelain", "--untracked-files=all"]) or ""
+    for line in porcelain.splitlines():
+        if len(line) < 4:
+            continue
+        path = line[3:].strip()
+        # Renames show as "old -> new"; keep the new path.
+        if " -> " in path:
+            path = path.split(" -> ")[-1]
+        path = path.strip().strip('"')
+        files.add(path)
+
+    # 2. Committed diff vs a base ref (e.g. main) — the PR view
+    if base:
+        diff = _run_git(["diff", "--name-only", f"{base}...HEAD"])
+        if diff is None:
+            # Fall back to a two-dot diff if the merge-base form fails
+            diff = _run_git(["diff", "--name-only", base]) or ""
+        for line in diff.splitlines():
+            files.add(line.strip())
+
+    changed_ids = sorted({
+        os.path.splitext(os.path.basename(f))[0]
+        for f in files if f.endswith(".sql")
+    })
+    return {"is_git": True, "changed": changed_ids, "base": base}
+
+
+@app.get("/git/branches")
+def git_branches():
+    """List local branch names (for the base-branch picker). Empty outside a repo."""
+    out = _run_git(["branch", "--format=%(refname:short)"])
+    if out is None:
+        return {"is_git": False, "branches": []}
+    branches = [b.strip() for b in out.splitlines() if b.strip()]
+    return {"is_git": True, "branches": branches}
+
+
 @app.get("/config/path")
 def get_path():
     return {"path": CURRENT_DIRECTORY}
@@ -143,11 +296,19 @@ def export_data_dictionary(data: dict = Body(...)):
     """Generates a Markdown data dictionary report for visible nodes only."""
     dialect = data.get("dialect", "bigquery")
     visible_node_ids = data.get("visible_node_ids", None)  # None = export all
-    
+
     if not os.path.exists(CURRENT_DIRECTORY):
         raise HTTPException(status_code=400, detail="Directory not found")
-    
-    tables = parse_sql_files(CURRENT_DIRECTORY, dialect=dialect)
+
+    # Scope the parse to the visible nodes so we don't run the expensive
+    # qualify_columns + column-lineage passes over the whole project just to
+    # throw most of it away. target_ids skips non-visible files entirely.
+    tables = parse_sql_files(
+        CURRENT_DIRECTORY,
+        dialect=dialect,
+        visible_node_ids=visible_node_ids,
+        target_ids=visible_node_ids,
+    )
     nodes, edges, cycles = build_graph(tables, discovery_mode=False)
     
     # Filter to only visible nodes if list provided

@@ -83,6 +83,15 @@ const CustomNode = ({ id, data }) => {
 
     const iconColor = styleMode === 'full' ? textColor : color;
 
+    // Git blast-radius highlight: edited models glow strongly, downstream
+    // (impacted) models get a softer accent ring.
+    const gitStatus = data.gitStatus;
+    const gitGlow = gitStatus === 'changed'
+        ? '0 0 0 2px var(--accent-primary), 0 0 18px 3px rgba(124,106,239,0.55)'
+        : gitStatus === 'downstream'
+            ? '0 0 0 2px rgba(124,106,239,0.55)'
+            : null;
+
     return (
         <div
             onContextMenu={(e) => {
@@ -94,7 +103,7 @@ const CustomNode = ({ id, data }) => {
                 padding: '12px 20px',
                 borderRadius: isView ? '20px' : '10px',
                 minWidth: '220px',
-                boxShadow: 'var(--shadow-md)',
+                boxShadow: gitGlow || 'var(--shadow-md)',
                 fontFamily: "'Inter', sans-serif",
                 position: 'relative',
                 cursor: 'context-menu',
@@ -253,7 +262,8 @@ const CustomNode = ({ id, data }) => {
                         />
 
                         {/* Expand / Collapse */}
-                        {data.expandedNodes && data.expandedNodes.includes(data.id) ? (
+                        <div style={{ width: '1px', background: 'var(--border-emphasis)', margin: '0 2px' }} />
+                        {data.expandedNodes && data.expandedNodes[data.id] ? (
                             <ToolbarButton
                                 icon={<Minimize2 size={14} />}
                                 label="Collapse"
@@ -261,12 +271,26 @@ const CustomNode = ({ id, data }) => {
                                 isDark={isDark}
                             />
                         ) : (
-                            <ToolbarButton
-                                icon={<Maximize2 size={14} />}
-                                label="Expand"
-                                onClick={() => data.onAction('expand', data.id)}
-                                isDark={isDark}
-                            />
+                            <>
+                                <ToolbarButton
+                                    icon={<Maximize2 size={14} />}
+                                    label="All"
+                                    onClick={() => data.onAction('expand', data.id)}
+                                    isDark={isDark}
+                                />
+                                <ToolbarButton
+                                    icon={<Globe size={14} />}
+                                    label="Externals"
+                                    onClick={() => data.onAction('expandExternal', data.id)}
+                                    isDark={isDark}
+                                />
+                                <ToolbarButton
+                                    icon={<FileText size={14} />}
+                                    label="CTEs"
+                                    onClick={() => data.onAction('expandCte', data.id)}
+                                    isDark={isDark}
+                                />
+                            </>
                         )}
                     </div>
                 </div>
@@ -308,6 +332,30 @@ const CustomNode = ({ id, data }) => {
                 </div>
             )}
 
+            {/* Git change / impact badge */}
+            {gitStatus && (
+                <div style={{
+                    position: 'absolute',
+                    top: '-10px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: gitStatus === 'changed' ? 'var(--accent-primary)' : 'var(--surface-tooltip)',
+                    color: gitStatus === 'changed' ? 'var(--text-inverse)' : 'var(--accent-primary)',
+                    border: gitStatus === 'changed' ? 'none' : '1px solid var(--accent-primary)',
+                    fontSize: '8px',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    letterSpacing: '0.05em',
+                    textTransform: 'uppercase',
+                    boxShadow: 'var(--shadow-sm)',
+                    zIndex: 4,
+                    whiteSpace: 'nowrap',
+                }}>
+                    {gitStatus === 'changed' ? '● Changed' : 'Impacted'}
+                </div>
+            )}
+
             <Handle type="source" position={Position.Right} style={{ background: 'var(--text-secondary)', width: 8, height: 8, border: '2px solid var(--surface-primary)' }} />
         </div>
     );
@@ -337,4 +385,46 @@ const ToolbarButton = ({ icon, label, onClick, isDark }) => (
     </button>
 );
 
-export default memo(CustomNode);
+// Custom equality: the parent rebuilds every node's `data` object (with fresh
+// handler closures) on every refresh, which makes the default shallow `memo`
+// re-render ALL nodes each time. Our handlers are stable useCallbacks that read
+// from refs, so we can safely ignore their identity and only re-render when a
+// visually-relevant field actually changes. This is the single biggest render
+// win on large graphs.
+const areEqual = (prev, next) => {
+    if (prev.id !== next.id) return false;
+    if (prev.selected !== next.selected) return false;
+    if (prev.dragging !== next.dragging) return false;
+
+    const a = prev.data || {};
+    const b = next.data || {};
+
+    // Handler presence toggles interactivity (toolbar / context menu)
+    if (!!a.onContextMenu !== !!b.onContextMenu) return false;
+
+    const scalarKeys = [
+        'label', 'layer', 'theme', 'styleMode', 'palette',
+        'showCounts', 'showComplexity', 'showTags', 'tag',
+        'incomingCount', 'nestedCount', 'downstreamCount', 'gitStatus',
+    ];
+    for (const k of scalarKeys) {
+        if (a[k] !== b[k]) return false;
+    }
+
+    const da = a.details || {};
+    const db = b.details || {};
+    if (da.type !== db.type) return false;
+    if (da.project !== db.project) return false;
+    if (da.dataset !== db.dataset) return false;
+    if ((da.complexity && da.complexity.score) !== (db.complexity && db.complexity.score)) return false;
+    if ((da.syntax_warnings ? da.syntax_warnings.length : 0) !== (db.syntax_warnings ? db.syntax_warnings.length : 0)) return false;
+
+    // Expand/collapse state for THIS node changes its toolbar
+    const ea = a.expandedNodes ? a.expandedNodes[prev.id] : undefined;
+    const eb = b.expandedNodes ? b.expandedNodes[next.id] : undefined;
+    if (ea !== eb) return false;
+
+    return true;
+};
+
+export default memo(CustomNode, areEqual);

@@ -124,7 +124,7 @@ Install easily via `pip`:
 pip install sql-dag-flow
 ```
 
-To update to the latest version (**v0.6.0**):
+To update to the latest version (**v0.7.0**):
 
 ```bash
 pip install --upgrade sql-dag-flow

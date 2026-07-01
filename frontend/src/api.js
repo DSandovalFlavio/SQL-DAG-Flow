@@ -93,7 +93,7 @@ export const scanFolders = async (path) => {
 };
 
 // subfolders is array, dialect is string
-export const fetchFilteredGraph = async (subfolders, dialect = 'bigquery', discovery = false, expanded_nodes = [], visible_node_ids = null, discovery_filter = 'all') => {
+export const fetchFilteredGraph = async (subfolders, dialect = 'bigquery', discovery = false, expanded_nodes = {}, visible_node_ids = null, discovery_filter = 'all') => {
     try {
         const response = await fetch(`${API_URL}/graph/filtered`, {
             method: 'POST',
@@ -109,6 +109,65 @@ export const fetchFilteredGraph = async (subfolders, dialect = 'bigquery', disco
     } catch (error) {
         console.error("Error fetching filtered graph:", error);
         return { nodes: [], edges: [], error: "Failed to fetch graph" };
+    }
+};
+
+// Parse + build only the given node ids (a saved/curated view). Fast path that
+// never re-parses the whole project nor pulls in newly-added files.
+export const fetchScopedGraph = async (nodeIds, dialect = 'bigquery', discovery = false, expanded_nodes = {}, discovery_filter = 'all') => {
+    try {
+        const response = await fetch(`${API_URL}/graph/scoped`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+            },
+            body: JSON.stringify({ node_ids: nodeIds, dialect, discovery, expanded_nodes, discovery_filter }),
+        });
+        return await response.json();
+    } catch (error) {
+        console.error("Error fetching scoped graph:", error);
+        return { nodes: [], edges: [], error: "Failed to fetch scoped graph" };
+    }
+};
+
+// Fast filesystem-only diff: which .sql models exist on disk but aren't known yet.
+export const scanNewModels = async (knownIds = []) => {
+    try {
+        const response = await fetch(`${API_URL}/scan/new`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ known_ids: knownIds }),
+        });
+        if (!response.ok) return { new: [] };
+        return await response.json();
+    } catch (error) {
+        console.error("Error scanning for new models:", error);
+        return { new: [] };
+    }
+};
+
+// Which .sql models changed in git (working tree, plus vs a base branch if given).
+export const fetchGitChanges = async (base = "") => {
+    try {
+        const q = base ? `?base=${encodeURIComponent(base)}` : "";
+        const response = await fetch(`${API_URL}/git/changes${q}`);
+        if (!response.ok) return { is_git: false, changed: [] };
+        return await response.json();
+    } catch (error) {
+        console.error("Error fetching git changes:", error);
+        return { is_git: false, changed: [] };
+    }
+};
+
+export const fetchGitBranches = async () => {
+    try {
+        const response = await fetch(`${API_URL}/git/branches`);
+        if (!response.ok) return { is_git: false, branches: [] };
+        return await response.json();
+    } catch (error) {
+        console.error("Error fetching git branches:", error);
+        return { is_git: false, branches: [] };
     }
 };
 

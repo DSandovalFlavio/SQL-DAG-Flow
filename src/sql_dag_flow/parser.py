@@ -123,20 +123,26 @@ def extract_output_columns(parsed, dialect="bigquery"):
 
     return columns
 
-def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visible_node_ids=None):
+def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visible_node_ids=None, target_ids=None):
     """
     Recursively scans a directory for .sql files and parses them.
     Returns a dictionary mapping table names to their dependencies and metadata.
-    
+
     Uses persistent mtime-based cache to skip re-parsing unchanged files.
     If visible_node_ids is provided, qualify_columns and column_lineage
     are only computed for visible nodes (performance optimization).
+    If target_ids is provided (a set/list of node ids = filename bases), ONLY
+    those files are parsed and returned — the walk still runs (cheap) but
+    non-scoped files are skipped, so the heavy sqlglot work stays O(scope).
+    This is what powers saved "views": reopening one never re-parses the whole
+    project nor floods the canvas with newly-added files.
     """
     tables = {}
     cache = _load_cache(directory)
     cache_hits = 0
     cache_misses = 0
-    
+    target_set = set(target_ids) if target_ids is not None else None
+
     for root, dirs, files in os.walk(directory):
         # Skip hidden config folders like .sqldagflow
         dirs[:] = [d for d in dirs if not d.startswith('.')]
@@ -218,7 +224,11 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                 filepath = os.path.join(root, file)
                 # Heuristic for table name: filename without extension
                 filename_base = os.path.splitext(file)[0]
-                
+
+                # Scoped parse: skip any file not in the requested view.
+                if target_set is not None and filename_base not in target_set:
+                    continue
+
                 # Layer detection based on folder structure first, then filename
                 lower_path = filepath.lower()
                 layer = "other"
@@ -830,9 +840,12 @@ def build_graph(tables, discovery_mode=False, expanded_nodes=None, discovery_fil
     Constructs nodes and edges for React Flow.
     If discovery_mode is True, creates 'ghost' nodes for dependencies 
     that are not found in the parsed tables.
-    Also creates ghost nodes for any node whose ID is in expanded_nodes list.
+    expanded_nodes: dict {node_id: 'all'|'external'|'cte'} or list (legacy, treated as 'all').
     discovery_filter: 'all' | 'external' | 'cte' — controls which ghost types to show.
     """
+    # Normalize legacy list format to dict
+    if isinstance(expanded_nodes, list):
+        expanded_nodes = {n: 'all' for n in expanded_nodes}
     nodes = []
     edges = []
     
@@ -891,7 +904,8 @@ def build_graph(tables, discovery_mode=False, expanded_nodes=None, discovery_fil
                          cte_name = ":".join(parts[2:])
                          cte_internal_deps = tables[source_id].get("cte_deps", {}).get(cte_name, {})
                          
-                         if (discovery_mode and discovery_filter in ('all', 'cte')) or (expanded_nodes and source_id in expanded_nodes):
+                         expand_mode = expanded_nodes.get(source_id, None) if expanded_nodes else None
+                         if (discovery_mode and discovery_filter in ('all', 'cte')) or (expand_mode and expand_mode in ('all', 'cte')):
                              # Discovery Mode or Expanded: Create CTE ghost node with incoming edges
                              cte_id = dep
                              
@@ -986,7 +1000,8 @@ def build_graph(tables, discovery_mode=False, expanded_nodes=None, discovery_fil
                      continue
 
                  # Handle missing external nodes (discovery mode or expanded node only)
-                 if ((discovery_mode and discovery_filter in ('all', 'external')) or (expanded_nodes and source_id in expanded_nodes)) and not target_id:
+                 expand_mode_ext = expanded_nodes.get(source_id, None) if expanded_nodes else None
+                 if ((discovery_mode and discovery_filter in ('all', 'external')) or (expand_mode_ext and expand_mode_ext in ('all', 'external'))) and not target_id:
                          # Create a unique ID for the missing node
                          # Use the full dependency name as the ID
                          ghost_id = dep
@@ -1063,22 +1078,45 @@ def build_graph(tables, discovery_mode=False, expanded_nodes=None, discovery_fil
                         "label": consumer_data.get("label", consumer_id)
                     })
 
+    # ===== Reachability counts (ancestors / descendants) =====
+    # Compute for ALL nodes in two topological passes instead of running a
+    # separate O(V+E) traversal per node (the old approach was O(V*(V+E))).
+    # Each node reuses its successors'/predecessors' already-computed sets.
+    # Falls back to per-node only when the graph has cycles (rare, capped later).
+    ancestors_count = {}
+    descendants_count = {}
+    try:
+        topo = list(nx.topological_sort(G))
+        desc_sets = {}
+        for n in reversed(topo):
+            s = set()
+            for succ in G.successors(n):
+                s.add(succ)
+                s |= desc_sets[succ]
+            desc_sets[n] = s
+        anc_sets = {}
+        for n in topo:
+            s = set()
+            for pred in G.predecessors(n):
+                s.add(pred)
+                s |= anc_sets[pred]
+            anc_sets[n] = s
+        descendants_count = {n: len(desc_sets[n]) for n in G.nodes()}
+        ancestors_count = {n: len(anc_sets[n]) for n in G.nodes()}
+    except Exception:
+        # Cyclic graph: topological_sort is undefined — fall back per node.
+        for n in G.nodes():
+            try:
+                ancestors_count[n] = len(nx.ancestors(G, n))
+                descendants_count[n] = len(nx.descendants(G, n))
+            except Exception:
+                ancestors_count[n] = 0
+                descendants_count[n] = 0
+
     for table_name, data in all_nodes_data.items():
-        # Calculate nested dependencies (all ancestors in the dependency graph)
-        nested_count = 0
-        if G.has_node(table_name):
-            try:
-                nested_count = len(nx.ancestors(G, table_name))
-            except Exception:
-                pass
-        
-        # Get downstream impact count
-        downstream_count = 0
-        if G.has_node(table_name):
-            try:
-                downstream_count = len(nx.descendants(G, table_name))
-            except Exception:
-                pass
+        # Nested = all upstream ancestors; downstream = all descendants.
+        nested_count = ancestors_count.get(table_name, 0)
+        downstream_count = descendants_count.get(table_name, 0)
 
         nodes.append({
             "id": table_name,
