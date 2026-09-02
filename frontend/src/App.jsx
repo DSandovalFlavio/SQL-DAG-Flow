@@ -81,6 +81,11 @@ const Flow = () => {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [impactNode, setImpactNode] = useState(null);
   const [cycles, setCycles] = useState([]);
+  // References the parser refused to resolve (unknown, ambiguous, or duplicated
+  // model names). Surfacing these is the point: a missing edge you can see beats
+  // a wrong edge you can't.
+  const [lineageWarnings, setLineageWarnings] = useState([]);
+  const [showWarningDetails, setShowWarningDetails] = useState(false);
   const [navHistory, setNavHistory] = useState([]);
   const [refreshDiff, setRefreshDiff] = useState(null);
   const [tourOpen, setTourOpen] = useState(false);
@@ -769,6 +774,7 @@ const Flow = () => {
 
       // Store cycle warnings
       if (data.cycles) setCycles(data.cycles);
+      setLineageWarnings(data.warnings || []);
 
       // ===== Diff View: Compare old vs new graph =====
       const oldNodeIds = new Set(nodes.filter(n => n.type !== 'annotation').map(n => n.id));
@@ -1097,6 +1103,7 @@ const Flow = () => {
       const data = await fetchScopedGraph(scopeIds, dialect, discoveryMode, expandedNodes, discoveryFilter);
       if (data.error) return;
       if (data.cycles) setCycles(data.cycles);
+      setLineageWarnings(data.warnings || []);
 
       const existingIds = new Set(nodes.map(n => n.id));
       let i = 0;
@@ -1774,6 +1781,79 @@ const Flow = () => {
       }
 
       {/* Cycle Warning Banner */}
+      {lineageWarnings.length > 0 && !isExporting && (
+        <div style={{
+          position: 'absolute', top: cycles.length > 0 ? '112px' : '70px', left: '50%',
+          transform: 'translateX(-50%)', zIndex: 998,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
+          animation: 'fadeIn 0.2s ease-out',
+        }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px',
+            background: 'rgba(234, 179, 8, 0.12)',
+            border: '1px solid rgba(234, 179, 8, 0.32)',
+            borderRadius: '10px',
+            backdropFilter: 'blur(8px)',
+            boxShadow: 'var(--shadow-sm)',
+          }}>
+            <AlertTriangleIcon size={14} style={{ color: '#eab308', flexShrink: 0 }} />
+            <span style={{ fontSize: '11px', fontWeight: 600, color: '#eab308' }}>
+              {lineageWarnings.length} unresolved {lineageWarnings.length === 1 ? 'reference' : 'references'} — lineage may be incomplete
+            </span>
+            <button
+              onClick={() => setShowWarningDetails(v => !v)}
+              style={{
+                fontSize: '10px', fontWeight: 600,
+                background: 'rgba(234, 179, 8, 0.2)', color: '#eab308',
+                border: 'none', borderRadius: '4px', padding: '2px 8px', cursor: 'pointer',
+              }}
+            >
+              {showWarningDetails ? 'Hide' : 'Details'}
+            </button>
+            <button
+              onClick={() => { setLineageWarnings([]); setShowWarningDetails(false); }}
+              style={{
+                background: 'transparent', border: 'none', color: '#eab308',
+                cursor: 'pointer', padding: '2px', display: 'flex', opacity: 0.6,
+              }}
+            >
+              ×
+            </button>
+          </div>
+
+          {showWarningDetails && (
+            <div style={{
+              maxHeight: '240px', overflowY: 'auto', maxWidth: '620px',
+              background: 'var(--surface-tooltip)',
+              border: '1px solid var(--border-default)',
+              borderRadius: '10px', padding: '10px 14px',
+              backdropFilter: 'blur(16px)', boxShadow: 'var(--shadow-lg)',
+              display: 'flex', flexDirection: 'column', gap: '6px',
+            }}>
+              {lineageWarnings.slice(0, 40).map((w, i) => (
+                <div key={i} style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  <span style={{
+                    fontSize: '9px', fontWeight: 700, textTransform: 'uppercase',
+                    letterSpacing: '0.05em', color: '#eab308', marginRight: '6px',
+                  }}>
+                    {String(w.kind || '').replace(/_/g, ' ')}
+                  </span>
+                  {w.message}
+                  {w.source && (
+                    <span style={{ opacity: 0.6 }}> — in <code>{w.source}</code></span>
+                  )}
+                </div>
+              ))}
+              {lineageWarnings.length > 40 && (
+                <div style={{ fontSize: '10px', opacity: 0.6 }}>
+                  …and {lineageWarnings.length - 40} more
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {cycles.length > 0 && !isExporting && (
         <div style={{
           position: 'absolute', top: '70px', left: '50%', transform: 'translateX(-50%)',

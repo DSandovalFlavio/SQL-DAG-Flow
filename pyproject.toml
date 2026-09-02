@@ -34,6 +34,13 @@ dependencies = [
 [project.scripts]
 sql-dag-flow = "sql_dag_flow.main:start"
 
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["sql_dag_flow*"]

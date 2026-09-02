@@ -56,33 +56,66 @@ def _cached_parse(directory, subfolders_tuple, dialect, visible_node_ids=None, t
     _parse_cache["time"] = now
     return tables
 
-@app.get("/graph")
-def get_graph(dialect: str = "bigquery", discovery: bool = False, expanded_nodes: str = "", visible_node_ids: str = "", discovery_filter: str = "all"):
-    """Parses SQL files in the current directory and returns graph data."""
+def _normalize_expanded(expanded_nodes):
+    """Accept the dict form, the legacy list form, or the query-string form."""
+    if isinstance(expanded_nodes, dict):
+        return expanded_nodes
+    if isinstance(expanded_nodes, list):
+        return {n: "all" for n in expanded_nodes}
+    result = {}
+    for item in (expanded_nodes or "").split(","):
+        item = item.strip()
+        if not item:
+            continue
+        parts = item.rsplit(":", 1)
+        if len(parts) == 2 and parts[1] in ("all", "external", "cte"):
+            result[parts[0]] = parts[1]
+        else:
+            result[item] = "all"
+    return result
+
+
+def _graph_response(dialect="bigquery", discovery=False, expanded_nodes=None,
+                    discovery_filter="all", subfolders=None,
+                    visible_node_ids=None, target_ids=None):
+    """Single implementation behind every graph route.
+
+    The three routes below differ only in how the request arrives (query
+    string, subfolder filter, explicit scope) — the parse → build → serialize
+    pipeline is identical, so it lives here once.
+    """
     if not os.path.exists(CURRENT_DIRECTORY):
-        return {"nodes": [], "edges": [], "cycles": [], "error": "Directory not found"}
-        
-    # Parse expanded_nodes as dict {node_id: mode}
-    exp_nodes_dict = {}
-    if expanded_nodes:
-        for item in expanded_nodes.split(","):
-            item = item.strip()
-            if not item:
-                continue
-            parts = item.rsplit(":", 1)
-            if len(parts) == 2 and parts[1] in ("all", "external", "cte"):
-                exp_nodes_dict[parts[0]] = parts[1]
-            else:
-                exp_nodes_dict[item] = "all"
-    visible_list = [n.strip() for n in visible_node_ids.split(",")] if visible_node_ids else None
+        return {"nodes": [], "edges": [], "cycles": [], "warnings": [], "error": "Directory not found"}
+
     try:
-        tables = _cached_parse(CURRENT_DIRECTORY, None, dialect, visible_node_ids=visible_list)
-        nodes, edges, cycles = build_graph(tables, discovery_mode=discovery, expanded_nodes=exp_nodes_dict, discovery_filter=discovery_filter)
-        return {"nodes": nodes, "edges": edges, "cycles": cycles}
+        tables = _cached_parse(
+            CURRENT_DIRECTORY,
+            tuple(subfolders) if subfolders else None,
+            dialect,
+            visible_node_ids=visible_node_ids,
+            target_ids=target_ids,
+        )
+        nodes, edges, cycles, warnings = build_graph(
+            tables,
+            discovery_mode=discovery,
+            expanded_nodes=_normalize_expanded(expanded_nodes),
+            discovery_filter=discovery_filter,
+        )
+        return {"nodes": nodes, "edges": edges, "cycles": cycles, "warnings": warnings}
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return {"nodes": [], "edges": [], "error": f"Backend Error: {str(e)}"}
+        return {"nodes": [], "edges": [], "cycles": [], "warnings": [], "error": f"Backend Error: {str(e)}"}
+
+
+@app.get("/graph")
+def get_graph(dialect: str = "bigquery", discovery: bool = False, expanded_nodes: str = "", visible_node_ids: str = "", discovery_filter: str = "all"):
+    """Full-project graph."""
+    visible_list = [n.strip() for n in visible_node_ids.split(",")] if visible_node_ids else None
+    return _graph_response(
+        dialect=dialect, discovery=discovery, expanded_nodes=expanded_nodes,
+        discovery_filter=discovery_filter, visible_node_ids=visible_list,
+    )
 
 @app.post("/config/path")
 def set_path(path_data: dict = Body(...)):
@@ -127,28 +160,15 @@ def scan_folders(path_data: dict = Body(...)):
 
 @app.post("/graph/filtered")
 def get_filtered_graph(data: dict = Body(...)):
-    """Parses SQL files with subfolder filtering."""
-    if not os.path.exists(CURRENT_DIRECTORY):
-        return {"nodes": [], "edges": [], "error": "Directory not found"}
-    
-    subfolders = data.get("subfolders")
-    dialect = data.get("dialect", "bigquery")
-    discovery = data.get("discovery", False)
-    expanded_nodes = data.get("expanded_nodes", {})
-    # Normalize: if frontend sends a list (legacy), convert to dict
-    if isinstance(expanded_nodes, list):
-        expanded_nodes = {n: 'all' for n in expanded_nodes}
-    visible_node_ids = data.get("visible_node_ids", None)
-    discovery_filter = data.get("discovery_filter", "all")
-    
-    try:
-        tables = _cached_parse(CURRENT_DIRECTORY, tuple(subfolders) if subfolders else None, dialect, visible_node_ids=visible_node_ids)
-        nodes, edges, cycles = build_graph(tables, discovery_mode=discovery, expanded_nodes=expanded_nodes, discovery_filter=discovery_filter)
-        return {"nodes": nodes, "edges": edges, "cycles": cycles}
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return {"nodes": [], "edges": [], "error": f"Backend Error: {str(e)}"}
+    """Graph restricted to a set of subfolders."""
+    return _graph_response(
+        dialect=data.get("dialect", "bigquery"),
+        discovery=data.get("discovery", False),
+        expanded_nodes=data.get("expanded_nodes", {}),
+        discovery_filter=data.get("discovery_filter", "all"),
+        subfolders=data.get("subfolders"),
+        visible_node_ids=data.get("visible_node_ids"),
+    )
 
 @app.post("/graph/scoped")
 def get_scoped_graph(data: dict = Body(...)):
@@ -165,29 +185,16 @@ def get_scoped_graph(data: dict = Body(...)):
 
     node_ids = data.get("node_ids") or []
     if not node_ids:
-        return {"nodes": [], "edges": [], "cycles": []}
+        return {"nodes": [], "edges": [], "cycles": [], "warnings": []}
 
-    dialect = data.get("dialect", "bigquery")
-    discovery = data.get("discovery", False)
-    expanded_nodes = data.get("expanded_nodes", {})
-    if isinstance(expanded_nodes, list):
-        expanded_nodes = {n: 'all' for n in expanded_nodes}
-    discovery_filter = data.get("discovery_filter", "all")
-
-    try:
-        tables = _cached_parse(
-            CURRENT_DIRECTORY, None, dialect,
-            visible_node_ids=node_ids, target_ids=node_ids,
-        )
-        nodes, edges, cycles = build_graph(
-            tables, discovery_mode=discovery,
-            expanded_nodes=expanded_nodes, discovery_filter=discovery_filter,
-        )
-        return {"nodes": nodes, "edges": edges, "cycles": cycles}
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return {"nodes": [], "edges": [], "error": f"Backend Error: {str(e)}"}
+    return _graph_response(
+        dialect=data.get("dialect", "bigquery"),
+        discovery=data.get("discovery", False),
+        expanded_nodes=data.get("expanded_nodes", {}),
+        discovery_filter=data.get("discovery_filter", "all"),
+        visible_node_ids=node_ids,
+        target_ids=node_ids,
+    )
 
 
 @app.post("/scan/new")
@@ -309,7 +316,7 @@ def export_data_dictionary(data: dict = Body(...)):
         visible_node_ids=visible_node_ids,
         target_ids=visible_node_ids,
     )
-    nodes, edges, cycles = build_graph(tables, discovery_mode=False)
+    nodes, edges, cycles, _warnings = build_graph(tables, discovery_mode=False)
     
     # Filter to only visible nodes if list provided
     if visible_node_ids is not None:

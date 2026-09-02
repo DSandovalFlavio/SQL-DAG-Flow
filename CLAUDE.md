@@ -31,7 +31,17 @@ Version lives in **three** places that should be kept in sync: `pyproject.toml`,
 
 ## Testing
 
-There is no formal test suite. `src/sql_dag_flow/test_parser.py`, `test_api_endpoints.py`, and `verify_counts.py` are ad-hoc `python`-run scripts with `print` output (not pytest), and some are stale — e.g. `test_parser.py` unpacks `build_graph()` as 2 values but it now returns 3 (`nodes, edges, cycles`). Verify changes by running the app against `sql_examples/` (referenced by the test scripts) rather than trusting these scripts.
+```bash
+python -m pytest tests -q          # whole suite (fast, no server needed)
+python -m pytest tests/test_identity.py -q
+python -m pytest tests -q -k phantom          # single case by name
+```
+
+`tests/` is the real suite (pytest). `conftest.py` exposes a `project` fixture that writes `{relpath: sql}` into a fresh `tmp_path` and returns the root, so each test parses an isolated project and the on-disk `.sqldagflow` cache never leaks between tests.
+
+The suite exists mainly to pin **lineage correctness** — `test_identity.py` covers the two failure modes that matter most (a model silently dropped by a colliding filename, and a fabricated edge from loose name matching). Treat those as regression guards; they encode the contract, not implementation detail. `test_consistency.py` pins that graph-wide aggregates don't change with the viewport.
+
+Beyond the suite, verify UI-facing changes by running the app against `sql_examples/`.
 
 ## Architecture
 
@@ -39,14 +49,21 @@ There is no formal test suite. `src/sql_dag_flow/test_parser.py`, `test_api_endp
 
 - **`parser.py`** — all SQL intelligence. Two entry points:
   - `parse_sql_files(directory, allowed_subfolders, dialect, visible_node_ids)` walks the tree, parses each `.sql` into a metadata dict keyed by filename-without-extension. Extracts dependencies (FROM/JOIN/CTE), output schema, business rules (WHERE/CASE/HAVING/aggregations), a weighted complexity score, column references, and SQL header-comment metadata (`-- @description:`, `-- @author:`, etc.).
-  - `build_graph(tables, discovery_mode, expanded_nodes, discovery_filter)` turns that dict into React Flow `nodes`/`edges` plus detected `cycles`, using `networkx` for ancestor/descendant counts and cycle detection.
-- **`main.py`** — FastAPI app + CLI `start()` entrypoint (declared in `pyproject.toml` `[project.scripts]`). Holds server-global mutable state `CURRENT_DIRECTORY` (the project being analyzed) that endpoints mutate via `POST /config/path`. Finds a free port starting at 8000, opens the browser, mounts `static/` as an SPA with a catch-all route and no-cache headers.
+  - `build_graph(tables, discovery_mode, expanded_nodes, discovery_filter)` turns that dict into React Flow `nodes`/`edges` plus detected `cycles` **and `warnings`** — it returns a 4-tuple `(nodes, edges, cycles, warnings)`.
+- **`main.py`** — FastAPI app + CLI `start()` entrypoint (declared in `pyproject.toml` `[project.scripts]`). Holds server-global mutable state `CURRENT_DIRECTORY` (the project being analyzed) that endpoints mutate via `POST /config/path`. Finds a free port starting at 8000, opens the browser, mounts `static/` as an SPA with a catch-all route and no-cache headers. The three graph routes (`/graph`, `/graph/filtered`, `/graph/scoped`) are thin adapters over one `_graph_response()` helper — they differ only in how the request arrives, so put shared behavior there, not in the routes.
+
+Two known limits worth keeping in mind before adding features: the `/graph` payload ships each node's full SQL `content`, so topology and detail are not yet separated (the scaling ceiling on big projects); and saved configs serialize whole nodes, so they embed a snapshot of that SQL. Splitting `/graph` (light) from a per-node detail fetch is the intended fix and touches `DetailsPanel`, `ComparisonPanel`, `Sidebar`'s SQL search, and App's diff detection.
 
 Key parser concepts to preserve when editing:
 - **Layer detection** is substring-based on the full lowercased path (`bronze`/`bronce`, `silver`, `gold`, else `other`) — folder name drives node color/grouping.
 - **CTE handling is dual-mode.** CTEs are parsed as pseudo-dependencies keyed `cte:<file>:<name>`. In normal mode `build_graph` *flattens* a CTE's internal deps into direct edges to the parent; in discovery/expanded mode it materializes the CTE as its own pink ghost node with incoming edges. Both paths must stay consistent.
 - **"Ghost"/external nodes** are dependencies with no matching `.sql` file, only surfaced in discovery mode or for explicitly expanded nodes; `discovery_filter` (`all`/`external`/`cte`) gates which kinds appear.
-- **Name resolution** is fuzzy: `build_graph` builds a `lookup` mapping every alias form (`table`, `dataset.table`, `project.dataset.table`) to a node id, and falls back to matching the last dotted segment.
+- **Node identity** is decided *before* parsing, by `_build_id_map` over a cheap filesystem-only walk of the whole project (`_collect_sql_files`). A file keeps its plain basename as its id when that name is unique project-wide; colliding names fall back to their relative path (`bronze/customers`, `gold/customers`). This must run over the whole project even for a scoped parse, or ids would shift with the scope. Each node also carries `fqn`, the fully-qualified name the SQL declares.
+- **Name resolution is strict and never guesses** (`_resolve` inside `build_graph`). Three tiers, most specific first: `project.dataset.table` → `dataset.table` → bare `table`. Two rules make it trustworthy, and both are pinned by tests:
+  - A reference that names a dataset will **not** match a model declaring a *different* dataset (only one declaring none), so `proj.sales.orders` can't resolve to `proj.finance.orders`.
+  - More than one candidate means **ambiguous**: no edge is drawn and a warning is emitted, rather than picking one.
+  Anything unresolved or ambiguous appends to `warnings` (`unresolved_reference`, `ambiguous_reference`, `duplicate_name`), which the frontend surfaces in a banner. **Do not reintroduce a last-dotted-segment fallback** — that is exactly the bug that fabricated lineage edges.
+- **Two column-reference fields, on purpose.** `_extract_column_references` is shared by both passes. `column_references` (plain pass, computed for every node) is the authoritative field and the only one `column_consumers` aggregates from — keeping graph-wide answers independent of the viewport. `column_references_qualified` holds the more precise `qualify_columns` result, which only runs for visible nodes, and is for that node's own detail panel. Never feed the qualified field back into the aggregate.
 
 ### Two layers of caching (both in `parser.py` / `main.py`)
 1. **Persistent disk cache** — `.sqldagflow/cache.json` in the analyzed project, keyed per-file by `mtime_ns:size`. Skips re-parsing unchanged files across restarts. The `.sqldagflow` dir is skipped during the walk (hidden-dir filter). Cache stores JSON-safe copies (sets → lists).

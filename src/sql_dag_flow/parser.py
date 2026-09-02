@@ -12,6 +12,121 @@ import networkx as nx
 # ===== Persistent File Cache =====
 CACHE_DIR = ".sqldagflow"
 CACHE_FILENAME = "cache.json"
+# Bumped whenever the shape of a cached entry changes, so stale caches from an
+# older version are ignored instead of feeding wrong data into the graph.
+CACHE_VERSION = 2
+
+
+# ===== Node identity =====
+
+def _collect_sql_files(directory):
+    """Walk the tree once, filesystem only, returning [(filepath, relpath)].
+
+    No parsing happens here, so this stays instant even on huge projects. It
+    runs before parsing because node ids must be decided against the *whole*
+    project, not just the subset a scoped parse touches.
+    """
+    found = []
+    for root, dirs, files in os.walk(directory):
+        dirs[:] = [d for d in dirs if not d.startswith('.')]
+        for f in files:
+            if f.endswith(".sql"):
+                filepath = os.path.join(root, f)
+                rel = os.path.relpath(filepath, directory).replace(os.sep, '/')
+                found.append((filepath, rel))
+    return found
+
+
+def _build_id_map(sql_files):
+    """Assign a stable, unique node id to every .sql file.
+
+    A file keeps its plain basename when that name is unique project-wide, so
+    existing saved views keep resolving. Only when two files share a basename
+    do they fall back to their relative path — which is unique by construction.
+    Previously the basename was used unconditionally as a dict key, so
+    `bronze/customers.sql` and `gold/customers.sql` silently overwrote each
+    other and one model vanished from the graph.
+
+    Returns (id_map: filepath -> node_id, duplicates: basename -> [relpaths]).
+    """
+    by_base = {}
+    for filepath, rel in sql_files:
+        base = os.path.splitext(os.path.basename(rel))[0]
+        by_base.setdefault(base, []).append((filepath, rel))
+
+    id_map = {}
+    duplicates = {}
+    for base, entries in by_base.items():
+        if len(entries) == 1:
+            id_map[entries[0][0]] = base
+        else:
+            duplicates[base] = sorted(rel for _, rel in entries)
+            for filepath, rel in entries:
+                id_map[filepath] = os.path.splitext(rel)[0]
+    return id_map, duplicates
+
+
+def _normalize_part(value):
+    """Treat the parser's placeholder values as 'not declared'."""
+    if not value or value in ("default", "n/a"):
+        return None
+    return value
+
+
+def _build_fqn(project, dataset, table):
+    """The fully-qualified name the SQL actually declares, as far as it does."""
+    parts = [p for p in (_normalize_part(project), _normalize_part(dataset), table) if p]
+    return ".".join(parts)
+
+
+def _extract_column_references(ast, target_name):
+    """Map each source table referenced by the query to the columns used from it.
+
+    Both the plain pass and the qualify_columns pass run this, so the two can
+    never drift apart (they used to be two hand-maintained copies of the same
+    algorithm).
+    """
+    defined_ctes = set()
+    for cte in ast.find_all(exp.CTE):
+        name = cte.alias_or_name
+        if name:
+            defined_ctes.add(name)
+
+    alias_map = {}
+    for t in ast.find_all(exp.Table):
+        t_name = t.name
+        t_full = t_name
+        if t.db:
+            t_full = f"{t.db}.{t_name}"
+            if t.catalog:
+                t_full = f"{t.catalog}.{t.db}.{t_name}"
+        if t.alias:
+            alias_map[t.alias] = t_full
+        alias_map[t_name] = t_full
+
+    references = {}
+    unqualified = set()
+    for col in ast.find_all(exp.Column):
+        col_table = col.table  # alias or table name qualifying the column
+        if col_table and col_table in alias_map:
+            references.setdefault(alias_map[col_table], set()).add(col.name)
+        elif not col_table:
+            unqualified.add(col.name)
+
+    # Unqualified columns can't be attributed precisely; assign them to every
+    # real source (best effort — showing a column as used beats missing it).
+    if unqualified:
+        sources = {
+            v for v in alias_map.values()
+            if v != target_name
+            and v.split('.')[-1] != target_name
+            and v not in defined_ctes
+            and v.split('.')[-1] not in defined_ctes
+        }
+        for src in sources:
+            references.setdefault(src, set()).update(unqualified)
+
+    return {k: sorted(v) for k, v in references.items()}
 
 def _get_cache_path(directory):
     return os.path.join(directory, CACHE_DIR, CACHE_FILENAME)
@@ -143,6 +258,13 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
     cache_misses = 0
     target_set = set(target_ids) if target_ids is not None else None
 
+    # Decide node ids up front against the whole project so they stay stable
+    # regardless of subfolder filtering or scoped parsing.
+    id_map, duplicate_names = _build_id_map(_collect_sql_files(directory))
+    dup_by_base = {
+        base: rels for base, rels in duplicate_names.items()
+    }
+
     for root, dirs, files in os.walk(directory):
         # Skip hidden config folders like .sqldagflow
         dirs[:] = [d for d in dirs if not d.startswith('.')]
@@ -224,9 +346,12 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                 filepath = os.path.join(root, file)
                 # Heuristic for table name: filename without extension
                 filename_base = os.path.splitext(file)[0]
+                # Unique id decided by _build_id_map (basename, or relpath on collision)
+                node_id = id_map.get(filepath, filename_base)
 
-                # Scoped parse: skip any file not in the requested view.
-                if target_set is not None and filename_base not in target_set:
+                # Scoped parse: skip any file not in the requested view. Legacy
+                # saved views store bare basenames, so accept either form.
+                if target_set is not None and node_id not in target_set and filename_base not in target_set:
                     continue
 
                 # Layer detection based on folder structure first, then filename
@@ -242,9 +367,17 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                 # ===== Cache check: skip re-parsing if file unchanged =====
                 file_key = _file_cache_key(filepath)
                 cached_entry = cache.get(filepath)
-                if cached_entry and cached_entry.get("cache_key") == file_key and cached_entry.get("dialect") == dialect:
-                    # Cache hit — use stored parse result
-                    tables[filename_base] = cached_entry["data"]
+                if (cached_entry
+                        and cached_entry.get("v") == CACHE_VERSION
+                        and cached_entry.get("cache_key") == file_key
+                        and cached_entry.get("dialect") == dialect):
+                    # Cache hit — use stored parse result. The id is re-stamped
+                    # because collisions can change it without the file changing.
+                    data = cached_entry["data"]
+                    data["id"] = node_id
+                    if filename_base in dup_by_base:
+                        data["name_collision"] = dup_by_base[filename_base]
+                    tables[node_id] = data
                     cache_hits += 1
                     continue
                 
@@ -369,7 +502,7 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                             
                         # Internal CTE references (main query references a CTE)
                         if dep_name in defined_ctes:
-                            dependencies[f"cte:{filename_base}:{dep_name}"] = "CTE"
+                            dependencies[f"cte:{node_id}:{dep_name}"] = "CTE"
                             continue
                         
                         # Skip tables that belong inside a CTE definition
@@ -458,68 +591,9 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                     complexity_breakdown["score"] = complexity_score
                     
                     # ===== Column Reference Extraction =====
-                    # Extract which columns this model references from each source table
-                    # This enables downstream impact analysis
-                    column_references = {}  # source_table -> [columns]
-                    
-                    # Build alias -> table name mapping for the query
-                    alias_map = {}  # alias -> full_table_name
-                    for t in parsed.find_all(exp.Table):
-                        t_name = t.name
-                        t_full = t_name
-                        if t.db:
-                            t_full = f"{t.db}.{t_name}"
-                            if t.catalog:
-                                t_full = f"{t.catalog}.{t.db}.{t_name}"
-                        if t.alias:
-                            alias_map[t.alias] = t_full
-                        alias_map[t_name] = t_full
-                    
-                    # Extract column references with their table qualifier
-                    # Also capture unqualified columns and assign them to source tables
-                    unqualified_columns = set()
-                    
-                    for col in parsed.find_all(exp.Column):
-                        col_name = col.name
-                        col_table = col.table  # The table qualifier (alias or name)
-                        if col_table and col_table in alias_map:
-                            source = alias_map[col_table]
-                            if source not in column_references:
-                                column_references[source] = set()
-                            column_references[source].add(col_name)
-                        elif not col_table:
-                            # Unqualified column — track separately
-                            unqualified_columns.add(col_name)
-                    
-                    # Assign unqualified columns to source tables
-                    # Filter out CTEs and the target table itself (both short and full name)
-                    source_tables = [
-                        v for k, v in alias_map.items() 
-                        if v != target_table_name 
-                        and v.split('.')[-1] != target_table_name
-                        and v not in defined_ctes
-                        and v.split('.')[-1] not in defined_ctes
-                    ]
-                    # Deduplicate (aliases may point to same table)
-                    source_tables = list(set(source_tables))
-                    
-                    if unqualified_columns and source_tables:
-                        if len(source_tables) == 1:
-                            # Single source: assign all unqualified columns to it
-                            src = source_tables[0]
-                            if src not in column_references:
-                                column_references[src] = set()
-                            column_references[src].update(unqualified_columns)
-                        else:
-                            # Multiple sources: assign to ALL sources (best effort)
-                            # The UI will show them as "used" which is better than missing
-                            for src in source_tables:
-                                if src not in column_references:
-                                    column_references[src] = set()
-                                column_references[src].update(unqualified_columns)
-                    
-                    # Convert sets to sorted lists for JSON serialization
-                    column_references = {k: sorted(list(v)) for k, v in column_references.items()}
+                    # Which columns this model uses from each source table.
+                    # Shared helper, so this cannot drift from the qualified pass.
+                    column_references = _extract_column_references(parsed, target_table_name)
                     
                     # ===== Header Comment Extraction =====
                     # Extract metadata from SQL header comments:
@@ -558,9 +632,10 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                         mtime = None
                         days_ago = None
                              
-                    tables[filename_base] = { 
-                        "id": filename_base,
+                    tables[node_id] = {
+                        "id": node_id,
                         "label": target_table_name,
+                        "fqn": _build_fqn(project, dataset, target_table_name),
                         "layer": layer,
                         "type": node_type,
                         "project": project,
@@ -577,6 +652,8 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                         "header_meta": header_meta,
                         "last_modified_days": days_ago
                     }
+                    if filename_base in dup_by_base:
+                        tables[node_id]["name_collision"] = dup_by_base[filename_base]
                 except sqlglot.errors.ParseError as pe:
                     # Feature 4: Capture structured syntax errors
                     syntax_warnings = []
@@ -588,9 +665,10 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                             "highlight": err.get("highlight", "")
                         })
                     print(f"Syntax error in {filepath}: {pe}")
-                    tables[filename_base] = {
-                        "id": filename_base,
+                    tables[node_id] = {
+                        "id": node_id,
                         "label": filename_base,
+                        "fqn": filename_base,
                         "layer": layer,
                         "type": "unknown",
                         "project": "n/a",
@@ -603,9 +681,10 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                     }
                 except Exception as e:
                     print(f"Error parsing {filepath}: {e}")
-                    tables[filename_base] = {
-                        "id": filename_base,
+                    tables[node_id] = {
+                        "id": node_id,
                         "label": filename_base,
+                        "fqn": filename_base,
                         "layer": layer,
                         "type": "unknown",
                         "project": "n/a",
@@ -617,22 +696,23 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                     }
                 
                 # ===== Save to cache after parsing (success or error) =====
-                if filename_base in tables:
+                if node_id in tables:
                     file_key = _file_cache_key(filepath)
                     if file_key:
                         # Store a cache-safe copy (no sets, convert to lists)
                         cache_data = {}
-                        for k, v in tables[filename_base].items():
+                        for k, v in tables[node_id].items():
                             if isinstance(v, set):
                                 cache_data[k] = list(v)
                             elif isinstance(v, dict):
                                 cache_data[k] = {
-                                    dk: list(dv) if isinstance(dv, set) else dv 
+                                    dk: list(dv) if isinstance(dv, set) else dv
                                     for dk, dv in v.items()
                                 }
                             else:
                                 cache_data[k] = v
                         cache[filepath] = {
+                            "v": CACHE_VERSION,
                             "cache_key": file_key,
                             "dialect": dialect,
                             "data": cache_data
@@ -693,58 +773,16 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
             if time.time() - table_start > 2.0:
                 continue  # Skip extraction if qualification took too long
             
-            # Re-extract column references from qualified AST
-            alias_map = {}
-            defined_ctes = set()
-            for cte in qualified_ast.find_all(exp.CTE):
-                cn = cte.alias_or_name
-                if cn:
-                    defined_ctes.add(cn)
-            
-            for t in qualified_ast.find_all(exp.Table):
-                t_name = t.name
-                t_full = t_name
-                if t.db:
-                    t_full = f"{t.db}.{t_name}"
-                    if t.catalog:
-                        t_full = f"{t.catalog}.{t.db}.{t_name}"
-                if t.alias:
-                    alias_map[t.alias] = t_full
-                alias_map[t_name] = t_full
-            
-            column_references = {}
+            # Re-extract from the qualified AST using the same helper.
+            # Stored under a SEPARATE key on purpose: this pass only runs for
+            # visible nodes, so feeding it back into `column_references` made
+            # graph-wide aggregates (column_consumers) depend on what happened
+            # to be on screen. The consistent field stays authoritative for
+            # aggregation; this refined one is for the selected node's panel.
             target_name = tdata.get("label", tid)
-            unqualified_columns = set()
-            
-            for col in qualified_ast.find_all(exp.Column):
-                col_name = col.name
-                col_table = col.table
-                if col_table and col_table in alias_map:
-                    source = alias_map[col_table]
-                    if source not in column_references:
-                        column_references[source] = set()
-                    column_references[source].add(col_name)
-                elif not col_table:
-                    unqualified_columns.add(col_name)
-            
-            # Fallback for any remaining unqualified columns
-            if unqualified_columns:
-                source_tables = [
-                    v for k, v in alias_map.items()
-                    if v != target_name
-                    and v.split('.')[-1] != target_name
-                    and v not in defined_ctes
-                    and v.split('.')[-1] not in defined_ctes
-                ]
-                source_tables = list(set(source_tables))
-                if source_tables:
-                    for src in source_tables:
-                        if src not in column_references:
-                            column_references[src] = set()
-                        column_references[src].update(unqualified_columns)
-            
-            column_references = {k: sorted(list(v)) for k, v in column_references.items()}
-            tdata["column_references"] = column_references
+            tdata["column_references_qualified"] = _extract_column_references(
+                qualified_ast, target_name
+            )
             
         except Exception:
             pass  # Keep original column_references
@@ -848,28 +886,89 @@ def build_graph(tables, discovery_mode=False, expanded_nodes=None, discovery_fil
         expanded_nodes = {n: 'all' for n in expanded_nodes}
     nodes = []
     edges = []
-    
-    # Create a lookup map: identifier -> node_id
-    lookup = {}
-    
+    warnings = []
+
+    # ===== Name resolution index =====
+    # Three tiers, most specific first. Matching never falls back to "same last
+    # segment" blindly: a reference that names a dataset must not resolve to a
+    # model that declares a *different* dataset, or we invent dependencies that
+    # do not exist (proj.sales.orders resolving to proj.finance.orders).
+    by_full = {}      # "project.dataset.table" -> [node_id]
+    by_dataset = {}   # "dataset.table"         -> [node_id]
+    by_table = {}     # "table"                 -> [node_id]
+    by_id = {}        # exact node id           -> node_id
+    declared_dataset = {}  # node_id -> dataset it declares, or None
+
     for node_id, data in tables.items():
-        lookup[node_id] = node_id
-        if "label" in data:
-            lookup[data["label"]] = node_id
-            
-        project = data.get("project", "default")
-        dataset = data.get("dataset", "default")
-        table = data.get("label", "")
-        
+        by_id[node_id.lower()] = node_id
+        table = (data.get("label") or "").lower()
+        dataset = _normalize_part(data.get("dataset"))
+        project = _normalize_part(data.get("project"))
+        declared_dataset[node_id] = dataset.lower() if dataset else None
+
         if table:
-             if dataset != "default":
-                 lookup[f"{dataset}.{table}"] = node_id
-                 if project != "default":
-                     lookup[f"{project}.{dataset}.{table}"] = node_id
-    
+            by_table.setdefault(table, []).append(node_id)
+            if dataset:
+                by_dataset.setdefault(f"{dataset.lower()}.{table}", []).append(node_id)
+                if project:
+                    by_full.setdefault(f"{project.lower()}.{dataset.lower()}.{table}", []).append(node_id)
+
+        # Surface colliding basenames once each, so a user can tell why a model
+        # is addressed by path instead of by name.
+        for rel_paths in [data.get("name_collision")]:
+            if rel_paths and not any(w.get("name") == data.get("label") and w["kind"] == "duplicate_name" for w in warnings):
+                warnings.append({
+                    "kind": "duplicate_name",
+                    "name": data.get("label"),
+                    "paths": rel_paths,
+                    "message": f"Several .sql files share the name '{os.path.basename(rel_paths[0])}'; they are addressed by path.",
+                })
+
+    def _resolve(ref):
+        """Resolve a dependency string to (node_id, status).
+
+        status is 'ok', 'ambiguous' or 'unresolved'. Ambiguous never guesses.
+        """
+        r = (ref or "").lower()
+        if r in by_id:
+            return by_id[r], "ok"
+
+        parts = r.split(".")
+        table = parts[-1]
+        dataset = parts[-2] if len(parts) >= 2 else None
+        project = parts[-3] if len(parts) >= 3 else None
+
+        def pick(candidates):
+            unique = list(dict.fromkeys(candidates))
+            if len(unique) == 1:
+                return unique[0], "ok"
+            return None, "ambiguous"
+
+        if project and dataset:
+            hit = by_full.get(f"{project}.{dataset}.{table}")
+            if hit:
+                return pick(hit)
+        if dataset:
+            hit = by_dataset.get(f"{dataset}.{table}")
+            if hit:
+                return pick(hit)
+
+        hit = by_table.get(table)
+        if hit:
+            if dataset:
+                # The reference names a dataset. Only models that declare no
+                # dataset at all can still match — one that declares a
+                # different dataset is a genuinely different table.
+                hit = [nid for nid in hit if not declared_dataset.get(nid)]
+                if not hit:
+                    return None, "unresolved"
+            return pick(hit)
+
+        return None, "unresolved"
+
     # Track incoming edges for accurate dependency counting
     incoming_edges_count = {node_id: 0 for node_id in tables}
-    
+
     # Track missing dependencies if in discovery mode
     missing_nodes = {}
 
@@ -879,12 +978,24 @@ def build_graph(tables, discovery_mode=False, expanded_nodes=None, discovery_fil
         # Support both dict (name->type) and list (legacy) formats
         dep_items = deps.items() if isinstance(deps, dict) else [(d, "FROM") for d in deps]
         for dep, dep_type in dep_items:
-            target_id = lookup.get(dep)
-            
-            # Fuzzy lookup: if exact match fails, try splitting by dot and matching last part (table name)
-            if not target_id and "." in dep:
-                short_name = dep.split(".")[-1]
-                target_id = lookup.get(short_name)
+            if dep.startswith("cte:"):
+                target_id, status = None, "unresolved"
+            else:
+                target_id, status = _resolve(dep)
+                if status == "ambiguous":
+                    warnings.append({
+                        "kind": "ambiguous_reference",
+                        "reference": dep,
+                        "source": source_id,
+                        "message": f"'{dep}' matches more than one model; no edge was drawn.",
+                    })
+                elif status == "unresolved":
+                    warnings.append({
+                        "kind": "unresolved_reference",
+                        "reference": dep,
+                        "source": source_id,
+                        "message": f"'{dep}' does not match any model in scope.",
+                    })
 
             if target_id and target_id != source_id:
                 edges.append({
@@ -929,9 +1040,7 @@ def build_graph(tables, discovery_mode=False, expanded_nodes=None, discovery_fil
                                  
                                  # Wire CTE's internal dependencies as incoming edges
                                  for inner_dep, inner_type in cte_internal_deps.items():
-                                     inner_target = lookup.get(inner_dep)
-                                     if not inner_target and "." in inner_dep:
-                                         inner_target = lookup.get(inner_dep.split(".")[-1])
+                                     inner_target, _ = _resolve(inner_dep)
                                      
                                      if inner_target:
                                          edges.append({
@@ -981,9 +1090,7 @@ def build_graph(tables, discovery_mode=False, expanded_nodes=None, discovery_fil
                          else:
                              # Non-discovery: Flatten CTE deps as direct edges to parent
                              for inner_dep, inner_type in cte_internal_deps.items():
-                                 inner_target = lookup.get(inner_dep)
-                                 if not inner_target and "." in inner_dep:
-                                     inner_target = lookup.get(inner_dep.split(".")[-1])
+                                 inner_target, _ = _resolve(inner_dep)
                                  if inner_target and inner_target != source_id:
                                      edge_id = f"{inner_target}-{source_id}"
                                      # Avoid duplicate edges
@@ -1059,10 +1166,8 @@ def build_graph(tables, discovery_mode=False, expanded_nodes=None, discovery_fil
     for consumer_id, consumer_data in all_nodes_data.items():
         col_refs = consumer_data.get("column_references", {})
         for source_ref, columns in col_refs.items():
-            # Resolve source_ref to a node_id using lookup
-            source_node_id = lookup.get(source_ref)
-            if not source_node_id and "." in source_ref:
-                source_node_id = lookup.get(source_ref.split(".")[-1])
+            # Resolve source_ref to a node id with the same strict policy
+            source_node_id, _ = _resolve(source_ref)
             
             if source_node_id and source_node_id in all_nodes_data:
                 # Skip self-references (a model shouldn't be its own consumer)
@@ -1152,4 +1257,4 @@ def build_graph(tables, discovery_mode=False, expanded_nodes=None, discovery_fil
     except Exception:
         pass
 
-    return nodes, edges, cycles
+    return nodes, edges, cycles, warnings
