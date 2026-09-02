@@ -3,3 +3,6 @@ uvicorn
 sqlglot
 networkx
 pydantic
+
+[dev]
+pytest>=7

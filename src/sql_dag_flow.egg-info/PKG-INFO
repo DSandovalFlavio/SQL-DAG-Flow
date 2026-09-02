@@ -21,6 +21,8 @@ Requires-Dist: uvicorn
 Requires-Dist: sqlglot
 Requires-Dist: networkx
 Requires-Dist: pydantic
+Provides-Extra: dev
+Requires-Dist: pytest>=7; extra == "dev"
 Dynamic: license-file
 
 # SQL DAG Flow
