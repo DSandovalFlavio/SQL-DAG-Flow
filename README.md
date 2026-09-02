@@ -35,6 +35,8 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
 *   **Automatic Parsing**: Recursively scans `.sql` files to detect dependencies (`FROM`, `JOIN`, `CTE`s) using `sqlglot`.
 *   **Persistent File Cache (New in v0.6.0 ⚡)**: Avoids re-parsing unchanged SQL files across application restarts. Instantly loads your DAG on consecutive days.
 *   **Selective Processing (New in v0.6.0 🚀)**: Dramatically improves performance on large projects (10x-20x) by only analyzing visible nodes for complex features like Qualify Columns and Column-Level Lineage.
+*   **Scoped Views (New in v0.7.0 🎯)**: A saved diagram is now a *scope*. Reopening or refreshing it only re-parses the models actually on your canvas, so parsing stays proportional to your view instead of your whole project — and newly added `.sql` files never flood a curated architecture.
+*   **Scan New Models (New in v0.7.0 🔎)**: A pure filesystem diff (zero SQL parsing, instant on huge projects) that surfaces `.sql` files not yet on your canvas, so you pull them in on demand instead of re-indexing everything.
 *   **Medallion Architecture Support**: Automatically categorizes and colors nodes based on folder structure (Bronze, Silver, Gold).
 *   **Advanced Discovery Mode (Improved in v0.6.0 👻)**: Visualize "Ghost Nodes" (missing files or external tables). Includes specific filters to show **Both**, **Only External**, or **Only CTEs**.
 *   **CTE Visualization**: Detects internal Common Table Expressions and displays them as distinct Pink nodes.
@@ -66,6 +68,7 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
 
 ### 📊 Discovery & Analysis Tools
 *   **Impact Analysis**: Visualize blast radius before making changes. Highlights downstream models, column usage, and risk levels.
+*   **Git Blast Radius (New in v0.7.0 🌿)**: Highlights the models changed in your git working tree — or versus a base branch — together with every downstream model they affect. The "what does this PR break?" view, rendered directly on the canvas.
 *   **Diff View on Refresh**: Automatically summarizes added, removed, and modified nodes/edges after code changes.
 *   **Column Usage Tracking (Improved in v0.4.9 🔧)**: Schema Preview shows which specific columns are used by downstream consumers. Uses `sqlglot.optimizer.qualify_columns` for precise resolution of unqualified column references.
 *   **Staleness Detection**: Automatically flags inactive models (`Last Modified > 90d` = Stale) to help clean up legacy pipelines.
@@ -78,6 +81,7 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
 *   **SQL Syntax Validation (New in v0.4.9 🆕)**: Detects SQL parse errors and displays structured warnings with line/column references. Shows ⚠️ badge on nodes with syntax issues.
 *   **Large DAG Support & Safe Cycle Detection (New in v0.5.1 🚀)**: Optimized cycle detection algorithm prevents backend hanging and "Failed to fetch" browser errors when analyzing massive projects (50+ nodes). Employs quick DAG verifications and bounded iterator loops.
 *   **Performance Optimizations (v0.6.0 ⚡)**: Combines a new `.sqldagflow` persistent disk cache with visibility-based selective processing to make large DAG refreshes virtually instantaneous.
+*   **Performance Overhaul (New in v0.7.0 ⚡)**: Scoped parsing keeps the heavy `sqlglot` work proportional to your view; the Data Dictionary export no longer parses the entire project just to export a handful of models; upstream/downstream counts are computed in a single topological pass instead of one graph traversal per node; and the canvas virtualizes off-screen nodes and stops re-rendering every node on each refresh.
 *   **Batch Hide from Toolbar**: Select multiple nodes → click "Hide" in the selection toolbar to hide them all at once.
 *   **Discovery Mode Fix**: Ghost nodes from Discovery Mode are now hidden when their connected source nodes are hidden, preventing orphan ghost nodes.
 
