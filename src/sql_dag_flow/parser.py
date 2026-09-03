@@ -6,7 +6,14 @@ import hashlib
 import sqlglot
 from sqlglot import exp
 from sqlglot.optimizer.qualify_columns import qualify_columns as sqlglot_qualify_columns
+import logging
+
 import networkx as nx
+
+# sqlglot logs a warning every time it meets procedural syntax it can't model
+# (BEGIN ... END bodies, CALL). We handle those cases explicitly by re-parsing
+# the body, so the warnings are just noise in the user's terminal.
+logging.getLogger("sqlglot").setLevel(logging.ERROR)
 
 
 # ===== Persistent File Cache =====
@@ -77,6 +84,81 @@ def _build_fqn(project, dataset, table):
     """The fully-qualified name the SQL actually declares, as far as it does."""
     parts = [p for p in (_normalize_part(project), _normalize_part(dataset), table) if p]
     return ".".join(parts)
+
+
+# ===== Stored procedures / multi-statement scripts =====
+
+# sqlglot does not parse a procedural BEGIN ... END body: it falls back to a
+# generic Command node, so every INSERT/MERGE inside would be invisible. We
+# lift the body out and parse it as its own script instead.
+_PROC_BODY_RE = re.compile(r"\bBEGIN\b(.*)\bEND\b", re.IGNORECASE | re.DOTALL)
+_CALL_RE = re.compile(r"\bCALL\s+([A-Za-z0-9_.`]+)\s*\(", re.IGNORECASE)
+
+
+def _qualified_table_name(table_exp):
+    """'catalog.db.name' for a sqlglot Table, as far as it is qualified."""
+    if not isinstance(table_exp, exp.Table):
+        return None
+    name = table_exp.name
+    if not name:
+        return None
+    if table_exp.db:
+        if table_exp.catalog:
+            return f"{table_exp.catalog}.{table_exp.db}.{name}"
+        return f"{table_exp.db}.{name}"
+    return name
+
+
+def _extract_procedure_body(sql_text):
+    """Text between the outermost BEGIN and END, or None."""
+    match = _PROC_BODY_RE.search(sql_text or "")
+    return match.group(1) if match else None
+
+
+def _extract_calls(sql_text):
+    """Procedure names invoked with CALL (sqlglot leaves these unparsed)."""
+    return [c.strip("`") for c in _CALL_RE.findall(sql_text or "")]
+
+
+def _statement_write_target(statement):
+    """The table a statement writes to, with the operation that writes it."""
+    target, op = None, None
+    if isinstance(statement, exp.Insert):
+        target, op = statement.this, "INSERT"
+    elif isinstance(statement, exp.Merge):
+        target, op = statement.this, "MERGE"
+    elif isinstance(statement, exp.Update):
+        target, op = statement.this, "UPDATE"
+    elif isinstance(statement, exp.Delete):
+        target, op = statement.this, "DELETE"
+    elif isinstance(statement, exp.Create) and statement.kind in ("TABLE", "VIEW"):
+        target, op = statement.this, "CREATE"
+    if target is None:
+        return None, None
+    # INSERT INTO t (cols) wraps the table in a Schema; MERGE aliases it.
+    if isinstance(target, exp.Schema):
+        target = target.this
+    if isinstance(target, exp.Alias):
+        target = target.this
+    return _qualified_table_name(target), op
+
+
+def _collect_statements(sql_content, dialect):
+    """Every statement worth inspecting: the top-level ones plus, for a stored
+    procedure, the statements inside its body."""
+    statements = []
+    try:
+        statements = [s for s in sqlglot.parse(sql_content, read=dialect) if s is not None]
+    except Exception:
+        statements = []
+
+    body = _extract_procedure_body(sql_content)
+    if body:
+        try:
+            statements += [s for s in sqlglot.parse(body, read=dialect) if s is not None]
+        except Exception:
+            pass
+    return statements
 
 
 def _extract_column_references(ast, target_name):
@@ -390,11 +472,13 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                     # Parse with BigQuery dialect to support CREATE OR REPLACE TABLE/VIEW
                     parsed = sqlglot.parse_one(sql_content, read=dialect)
                     
-                    # Detect Node Type (Table or View)
+                    # Detect Node Type (table, view or stored procedure)
                     node_type = "table" # default
                     if isinstance(parsed, exp.Create):
                         if parsed.kind == "VIEW":
                             node_type = "view"
+                        elif parsed.kind == "PROCEDURE":
+                            node_type = "procedure"
                     
                     # Attempt to extract Project and Dataset from the CREATE statement
                     # pattern: project.dataset.table or dataset.table
@@ -411,6 +495,12 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                         # e.g. CREATE TABLE project.dataset.table (id INT64, name STRING)
                         if isinstance(target_exp, exp.Schema):
                             target_exp = target_exp.this
+                        # A stored procedure's target is a UserDefinedFunction;
+                        # its qualified name still sits in a Table node inside.
+                        if not isinstance(target_exp, exp.Table):
+                            inner_table = create_node.find(exp.Table)
+                            if inner_table is not None:
+                                target_exp = inner_table
                         if isinstance(target_exp, exp.Table):
                             target_table_name = target_exp.name
                             dataset = target_exp.db or "default"
@@ -513,7 +603,44 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                         # Regular external dependency at the main query level
                         dep_type = "JOIN" if dep_name in join_tables else "FROM"
                         dependencies[full_name] = dep_type
-                    
+
+                    # ===== Stored procedures / multi-statement scripts =====
+                    # `parsed` is only the FIRST statement. A procedure body, or
+                    # a script with several statements, carries the rest of the
+                    # lineage: what it reads, and — unlike a plain model — the
+                    # tables it writes to. Writes become outgoing edges later.
+                    writes = {}
+                    extra_statements = _collect_statements(sql_content, dialect)
+                    if len(extra_statements) > 1 or node_type == "procedure":
+                        own_names = {target_table_name}
+                        own_fqn = _build_fqn(project, dataset, target_table_name)
+                        if own_fqn:
+                            own_names.add(own_fqn)
+
+                        for statement in extra_statements:
+                            written, operation = _statement_write_target(statement)
+                            if written and written not in own_names:
+                                writes[written] = operation
+
+                        written_short = {w.split(".")[-1] for w in writes}
+                        for statement in extra_statements:
+                            for t in statement.find_all(exp.Table):
+                                dep_name = t.name
+                                if (not dep_name
+                                        or dep_name in own_names
+                                        or dep_name == target_table_name
+                                        or dep_name in defined_ctes
+                                        or dep_name in written_short):
+                                    continue
+                                full = _qualified_table_name(t)
+                                if full and full not in writes and full not in dependencies:
+                                    dependencies[full] = "FROM"
+
+                        # CALL <proc>() — sqlglot leaves these as opaque Commands
+                        for called in _extract_calls(sql_content):
+                            if called and called not in own_names:
+                                dependencies[called] = "CALL"
+
                     # ===== Business Rule Extraction =====
                     business_rules = {
                         "filters": [],       # WHERE conditions
@@ -642,6 +769,7 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                         "dataset": dataset,
                         "path": filepath,
                         "dependencies": dependencies,
+                        "writes": writes,
                         "content": sql_content,
                         "ctes": defined_ctes,
                         "cte_deps": cte_deps,
@@ -1148,6 +1276,26 @@ def build_graph(tables, discovery_mode=False, expanded_nodes=None, discovery_fil
                          
                          incoming_edges_count[source_id] = incoming_edges_count.get(source_id, 0) + 1
 
+
+    # ===== Outgoing edges from writes =====
+    # A stored procedure (or any script that INSERTs/MERGEs) produces tables
+    # rather than being one. Those targets are edges OUT of the node, which is
+    # what makes a procedure readable as a step between inputs and outputs.
+    for source_id, data in tables.items():
+        for written, operation in (data.get("writes") or {}).items():
+            written_id, status = _resolve(written)
+            if written_id and written_id != source_id:
+                edge_id = f"{source_id}-{written_id}"
+                if not any(e["id"] == edge_id for e in edges):
+                    edges.append({
+                        "id": edge_id,
+                        "source": source_id,
+                        "target": written_id,
+                        "animated": True,
+                        "label": operation or "WRITES",
+                        "style": {"stroke": "#b1b1b7"}
+                    })
+                    incoming_edges_count[written_id] = incoming_edges_count.get(written_id, 0) + 1
 
     # Merge missing nodes into the main tables list for node creation
     # We don't add them to 'tables' input to avoid side effects, just iterate for node creation

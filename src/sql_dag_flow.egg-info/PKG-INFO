@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: sql-dag-flow
-Version: 0.7.1
+Version: 0.8.0
 Summary: A sophisticated SQL lineage visualization tool for Medallion Architectures.
 Author-email: Flavio Sandoval <dsandovalflavio@gmail.com>
 License: MIT
@@ -60,6 +60,7 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
 
 ### 🔍 Visualization & Analysis
 *   **Automatic Parsing**: Recursively scans `.sql` files to detect dependencies (`FROM`, `JOIN`, `CTE`s) using `sqlglot`.
+*   **Trustworthy Lineage (New in v0.8.0 🎯)**: Every `.sql` file appears exactly once, even when two folders hold the same filename (`staging/customers.sql` and `marts/customers.sql` no longer overwrite each other — they're addressed by path). Dependency resolution is strict: a reference naming a dataset will never be matched to a model in a *different* dataset, and an ambiguous name draws no edge at all. Anything unresolved, ambiguous or duplicated is reported in a warnings banner instead of failing silently — a missing edge you can see beats a wrong edge you can't.
 *   **Persistent File Cache (New in v0.6.0 ⚡)**: Avoids re-parsing unchanged SQL files across application restarts. Instantly loads your DAG on consecutive days.
 *   **Selective Processing (New in v0.6.0 🚀)**: Dramatically improves performance on large projects (10x-20x) by only analyzing visible nodes for complex features like Qualify Columns and Column-Level Lineage.
 *   **Scoped Views (New in v0.7.0 🎯)**: A saved diagram is now a *scope*. Reopening or refreshing it only re-parses the models actually on your canvas, so parsing stays proportional to your view instead of your whole project — and newly added `.sql` files never flood a curated architecture.
@@ -155,7 +156,7 @@ Install easily via `pip`:
 pip install sql-dag-flow
 ```
 
-To update to the latest version (**v0.7.1**):
+To update to the latest version (**v0.8.0**):
 
 ```bash
 pip install --upgrade sql-dag-flow

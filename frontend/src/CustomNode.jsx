@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { Handle, Position, NodeToolbar } from '@xyflow/react';
-import { Database, Table, FileText, Layers, Eye, Globe, EyeOff, FolderMinus, ScanEye, MousePointerClick, Maximize2, Minimize2, AlertTriangle } from 'lucide-react';
+import { Database, Table, FileText, Layers, Eye, Globe, EyeOff, FolderMinus, ScanEye, MousePointerClick, Maximize2, Minimize2, AlertTriangle, Cog } from 'lucide-react';
 
 const CustomNode = ({ id, data }) => {
     const { label, layer, details, theme = 'dark', styleMode = 'full', onContextMenu } = data;
@@ -8,6 +8,9 @@ const CustomNode = ({ id, data }) => {
     data.id = id;
     const isDark = theme === 'dark';
     const isView = details?.type === 'view';
+    // A stored procedure is executable logic, not a table: it gets its own
+    // icon and badge so it reads as a step rather than a dataset.
+    const isProcedure = details?.type === 'procedure';
 
     const getLayerColor = (layer) => {
         switch (layer) {
@@ -57,6 +60,9 @@ const CustomNode = ({ id, data }) => {
     const { project = '', dataset = '' } = details || {};
 
     const getIcon = (layer, iconColor) => {
+        if (details?.type === 'procedure') {
+            return <Cog size={16} color={iconColor} />;
+        }
         if (details?.type === 'view') {
             return <Eye size={16} color={iconColor} />;
         }
@@ -121,7 +127,7 @@ const CustomNode = ({ id, data }) => {
                     fontWeight: 600,
                     color: styleMode === 'border' ? color : 'inherit'
                 }}>
-                    {layer.toUpperCase()} {isView ? '(VIEW)' : ''}
+                    {layer.toUpperCase()} {isProcedure ? '(PROC)' : isView ? '(VIEW)' : ''}
                 </div>
             </div>
 
