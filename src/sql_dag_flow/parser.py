@@ -95,6 +95,26 @@ _PROC_BODY_RE = re.compile(r"\bBEGIN\b(.*)\bEND\b", re.IGNORECASE | re.DOTALL)
 _CALL_RE = re.compile(r"\bCALL\s+([A-Za-z0-9_.`]+)\s*\(", re.IGNORECASE)
 
 
+# sqlglot's BigQuery dialect rejects parameter modes (OUT / INOUT / IN) in a
+# CREATE PROCEDURE signature, which fails the entire file — so a real procedure
+# lost all of its lineage and showed up as a syntax error. Stripping the modes
+# from the parameter list is enough for sqlglot to accept it; the body, name and
+# dependencies are then read normally.
+_PROC_SIGNATURE_RE = re.compile(
+    r"(\bPROCEDURE\b\s+(?:`[^`]+`|[\w.\-]+)\s*\()([^)]*)(\))",
+    re.IGNORECASE | re.DOTALL,
+)
+_PARAM_MODE_RE = re.compile(r"\b(?:INOUT|OUT|IN)\s+", re.IGNORECASE)
+
+
+def _normalize_procedure_signature(sql_text):
+    """Drop OUT/INOUT/IN modifiers from a procedure's parameter list."""
+    def strip_modes(match):
+        return match.group(1) + _PARAM_MODE_RE.sub("", match.group(2)) + match.group(3)
+
+    return _PROC_SIGNATURE_RE.sub(strip_modes, sql_text or "", count=1)
+
+
 def _qualified_table_name(table_exp):
     """'catalog.db.name' for a sqlglot Table, as far as it is qualified."""
     if not isinstance(table_exp, exp.Table):
@@ -492,8 +512,20 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                     sql_content = f.read()
                 
                 try:
-                    # Parse with BigQuery dialect to support CREATE OR REPLACE TABLE/VIEW
-                    parsed = sqlglot.parse_one(sql_content, read=dialect)
+                    # Parse with BigQuery dialect to support CREATE OR REPLACE TABLE/VIEW.
+                    # `sql_for_parsing` may differ from the on-disk text: a stored
+                    # procedure whose signature sqlglot rejects is retried with the
+                    # parameter modes stripped. The original text is still what we
+                    # store and display.
+                    sql_for_parsing = sql_content
+                    try:
+                        parsed = sqlglot.parse_one(sql_for_parsing, read=dialect)
+                    except sqlglot.errors.ParseError:
+                        normalized = _normalize_procedure_signature(sql_content)
+                        if normalized == sql_content:
+                            raise
+                        parsed = sqlglot.parse_one(normalized, read=dialect)
+                        sql_for_parsing = normalized
                     
                     # Detect Node Type (table, view or stored procedure)
                     node_type = "table" # default
@@ -633,7 +665,7 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                     # lineage: what it reads, and — unlike a plain model — the
                     # tables it writes to. Writes become outgoing edges later.
                     writes = {}
-                    extra_statements = _collect_statements(sql_content, dialect)
+                    extra_statements = _collect_statements(sql_for_parsing, dialect)
                     if len(extra_statements) > 1 or node_type == "procedure":
                         own_names = {target_table_name}
                         own_fqn = _build_fqn(project, dataset, target_table_name)
@@ -660,7 +692,7 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                                     dependencies[full] = "FROM"
 
                         # CALL <proc>() — sqlglot leaves these as opaque Commands
-                        for called in _extract_calls(sql_content):
+                        for called in _extract_calls(sql_for_parsing):
                             if called and called not in own_names:
                                 dependencies[called] = "CALL"
 

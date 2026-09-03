@@ -4,7 +4,7 @@ import '@xyflow/react/dist/style.css';
 // import dagre from 'dagre'; // Removed in favor of ELK
 import { getLayoutedElements } from './algorithms/elk';
 import { toPng, toSvg } from 'html-to-image';
-import { fetchGraph, saveGraph, loadGraphState, setPath, getPath, scanFolders, fetchFilteredGraph, moveFile, exportDataDictionary, fetchConfigFiles, fetchScopedGraph, scanNewModels, fetchGitChanges } from './api';
+import { fetchGraph, saveGraph, loadGraphState, setPath, getPath, scanFolders, fetchFilteredGraph, moveFile, exportDataDictionary, fetchConfigFiles, fetchScopedGraph, scanNewModels, fetchGitChanges, fetchVersion } from './api';
 import './index.css';
 import CustomNode from './CustomNode';
 import AnnotationNode from './AnnotationNode';
@@ -99,6 +99,10 @@ const Flow = () => {
   const [scopedView, setScopedView] = useState(false);
   const [gitBase, setGitBase] = useState('');
   const [gitActive, setGitActive] = useState(false);
+  // Version of the running backend, shown in the footer so it's obvious which
+  // build is in use (the package reads it from its own install metadata).
+  const [appVersion, setAppVersion] = useState(null);
+  useEffect(() => { fetchVersion().then(r => setAppVersion(r.version)); }, []);
 
   const nodeTypes = useMemo(() => ({ custom: CustomNode, annotation: AnnotationNode }), []);
 
@@ -2339,7 +2343,9 @@ const Flow = () => {
         color: 'var(--text-tertiary)',
         fontFamily: "'Inter', sans-serif"
       }}>
-        {isExporting ? 'Created by SQL DAG Flow' : 'Developed by @DSandovalflavio'}
+        {isExporting
+          ? `Created by SQL DAG Flow${appVersion ? ` v${appVersion}` : ''}`
+          : `Developed by @DSandovalflavio${appVersion ? ` · v${appVersion}` : ''}`}
       </div>
     </div >
   );

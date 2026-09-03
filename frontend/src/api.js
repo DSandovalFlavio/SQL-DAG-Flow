@@ -171,6 +171,17 @@ export const fetchGitBranches = async () => {
     }
 };
 
+// Version of the running backend, so the UI can show which build is in use.
+export const fetchVersion = async () => {
+    try {
+        const response = await fetch(`${API_URL}/version`);
+        if (!response.ok) return { version: null };
+        return await response.json();
+    } catch (error) {
+        return { version: null };
+    }
+};
+
 export const moveFile = async (currentPath, targetLayer) => {
     try {
         const response = await fetch(`${API_URL}/files/move`, {

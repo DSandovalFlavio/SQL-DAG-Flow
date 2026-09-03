@@ -138,3 +138,71 @@ def test_procedure_writes_are_exposed_on_the_node(project):
     writes = tables["refresh_sales"].get("writes", {})
     written = {w.split(".")[-1] for w in writes}
     assert written == {"sales_daily", "sales_summary"}
+
+
+# --------------------------------------------------------------------------
+# Real-world BigQuery procedures
+# --------------------------------------------------------------------------
+
+REAL_SP = """-- Procedimiento: sp_reload_stg_mkt_dv360_ad_rgn_stats_trn
+-- Dominio: mkt - Subdominio: platdig - Capa: 1_bronze
+CREATE OR REPLACE PROCEDURE `crp-dev-dominio-mkt.mus_dev_platdig_raw_tbls.sp_reload_stats`(
+  OUT o_rows_deleted  INT64,
+  OUT o_rows_inserted INT64
+)
+OPTIONS(
+  description = "[BRONZE] Ingesta idempotente de TMP hacia TRN"
+)
+BEGIN
+  DELETE FROM `crp-dev-dominio-mkt.mus_dev_platdig_raw_tbls.STG_MKT_STATS_TRN`
+  WHERE FCH_DATE >= '2024-01-01';
+
+  INSERT INTO `crp-dev-dominio-mkt.mus_dev_platdig_raw_tbls.STG_MKT_STATS_TRN`
+  SELECT * FROM `crp-dev-dominio-mkt.mus_dev_platdig_raw_tbls.STG_MKT_STATS_TMP`;
+END;
+"""
+
+
+def _real_project(project):
+    return project({
+        "bronze/STG_MKT_STATS_TMP.sql": (
+            "CREATE TABLE `crp-dev-dominio-mkt.mus_dev_platdig_raw_tbls.STG_MKT_STATS_TMP` "
+            "AS SELECT 1 AS FCH_DATE;"
+        ),
+        "bronze/STG_MKT_STATS_TRN.sql": (
+            "CREATE TABLE `crp-dev-dominio-mkt.mus_dev_platdig_raw_tbls.STG_MKT_STATS_TRN` "
+            "AS SELECT 1 AS FCH_DATE;"
+        ),
+        "bronze/sp_reload_stats.sql": REAL_SP,
+    })
+
+
+def test_out_parameters_do_not_break_the_procedure(project):
+    """sqlglot's BigQuery dialect rejects OUT/INOUT in a procedure signature,
+    which failed the whole file and lost all of its lineage."""
+    tables = parse_sql_files(_real_project(project))
+
+    proc = tables["sp_reload_stats"]
+    assert not proc.get("error"), f"procedure failed to parse: {proc.get('error')}"
+    assert not proc.get("syntax_warnings")
+    assert proc["type"] == "procedure"
+
+
+def test_backtick_qualified_name_with_dashes(project):
+    tables = parse_sql_files(_real_project(project))
+
+    assert tables["sp_reload_stats"]["fqn"] == (
+        "crp-dev-dominio-mkt.mus_dev_platdig_raw_tbls.sp_reload_stats"
+    )
+
+
+def test_real_procedure_lineage(project):
+    tables = parse_sql_files(_real_project(project))
+    _, edges, _, _ = build_graph(tables)
+    pairs = edge_pairs(edges)
+
+    # reads TMP, writes TRN (DELETE + INSERT both target TRN)
+    assert ("STG_MKT_STATS_TMP", "sp_reload_stats") in pairs
+    assert ("sp_reload_stats", "STG_MKT_STATS_TRN") in pairs
+    # the written table must not also be counted as a source
+    assert ("STG_MKT_STATS_TRN", "sp_reload_stats") not in pairs

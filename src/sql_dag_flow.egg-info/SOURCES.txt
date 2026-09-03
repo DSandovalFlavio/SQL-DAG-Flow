@@ -19,3 +19,4 @@ tests/test_consistency.py
 tests/test_graph.py
 tests/test_identity.py
 tests/test_procedures.py
+tests/test_schema_scope.py

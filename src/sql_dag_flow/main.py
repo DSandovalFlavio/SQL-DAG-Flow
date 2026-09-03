@@ -15,6 +15,7 @@ import socket
 import argparse
 import shutil
 import subprocess
+from . import __version__
 from .parser import parse_sql_files, build_graph
 
 app = FastAPI()
@@ -292,6 +293,12 @@ def git_branches():
         return {"is_git": False, "branches": []}
     branches = [b.strip() for b in out.splitlines() if b.strip()]
     return {"is_git": True, "branches": branches}
+
+
+@app.get("/version")
+def get_version():
+    """Version of the installed package, so the UI can show which build is running."""
+    return {"version": __version__}
 
 
 @app.get("/config/path")
@@ -639,10 +646,11 @@ def start():
     # CLI Argument Parsing with argparse
     parser = argparse.ArgumentParser(
         prog='sql-dag-flow',
-        description='SQL DAG Flow - Medallion Architecture Visualizer'
+        description=f'SQL DAG Flow {__version__} - Medallion Architecture Visualizer'
     )
     parser.add_argument('path', nargs='?', default=None, help='Path to SQL project folder')
     parser.add_argument('--port', '-p', type=int, default=8000, help='Port to run the server on (default: 8000)')
+    parser.add_argument('--version', '-V', action='version', version=f'sql-dag-flow {__version__}')
     
     # Use parse_known_args to be tolerant of unexpected args
     args, unknown = parser.parse_known_args()
