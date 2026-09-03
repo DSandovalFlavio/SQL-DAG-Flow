@@ -259,3 +259,77 @@ def test_failed_parses_are_not_written_to_the_cache(project):
     assert not any("broken.sql" in key for key in cached), (
         "a failed parse was cached and would survive a parser fix"
     )
+
+
+# --------------------------------------------------------------------------
+# BigQuery scripting constructs sqlglot cannot parse
+# --------------------------------------------------------------------------
+
+SCRIPTING_SP = """CREATE OR REPLACE PROCEDURE `crp-dev.d.sp_reload`(
+  OUT o_rows_deleted  INT64,
+  OUT o_rows_inserted INT64
+)
+BEGIN
+  DECLARE v_min_date DATE;
+  DECLARE v_tmp_rows INT64;
+
+  -- SELECT ... INTO is BigQuery scripting; sqlglot rejects it
+  SELECT MIN(FCH_DATE), COUNT(*)
+  INTO v_min_date, v_tmp_rows
+  FROM `crp-dev.d.STG_TMP`;
+
+  IF v_tmp_rows IS NULL OR v_tmp_rows = 0 THEN
+    RAISE USING MESSAGE = FORMAT('%s abortado: TMP llego vacio.', 'sp_reload');
+  END IF;
+
+  DELETE FROM `crp-dev.d.STG_TRN` WHERE FCH_DATE >= v_min_date;
+
+  INSERT INTO `crp-dev.d.STG_TRN`
+  SELECT * FROM `crp-dev.d.STG_TMP`;
+END;
+"""
+
+
+def _scripting_project(project):
+    return project({
+        "bronze/STG_TMP.sql": "CREATE TABLE `crp-dev.d.STG_TMP` AS SELECT 1 AS FCH_DATE;",
+        "bronze/STG_TRN.sql": "CREATE TABLE `crp-dev.d.STG_TRN` AS SELECT 1 AS FCH_DATE;",
+        "bronze/sp_reload.sql": SCRIPTING_SP,
+    })
+
+
+def test_select_into_does_not_break_the_procedure(project):
+    """One unsupported statement must not cost the whole procedure."""
+    tables = parse_sql_files(_scripting_project(project))
+
+    proc = tables["sp_reload"]
+    assert proc["type"] == "procedure", f"got {proc['type']}, error={proc.get('error')}"
+    assert not proc.get("syntax_warnings")
+
+
+def test_lineage_survives_unparseable_statements(project):
+    """The DELETE and INSERT still parse, so their lineage must be kept even
+    though the SELECT ... INTO above them does not."""
+    tables = parse_sql_files(_scripting_project(project))
+    _, edges, _, _ = build_graph(tables)
+    pairs = edge_pairs(edges)
+
+    assert ("STG_TMP", "sp_reload") in pairs
+    assert ("sp_reload", "STG_TRN") in pairs
+
+
+def test_select_into_is_still_read_as_a_dependency(project):
+    """The table behind SELECT ... INTO is a genuine read."""
+    tables = parse_sql_files(project({
+        "bronze/STG_TMP.sql": "CREATE TABLE `crp-dev.d.STG_TMP` AS SELECT 1 AS FCH_DATE;",
+        "bronze/sp_probe.sql": (
+            "CREATE OR REPLACE PROCEDURE `crp-dev.d.sp_probe`(OUT n INT64)\n"
+            "BEGIN\n"
+            "  DECLARE v_rows INT64;\n"
+            "  SELECT COUNT(*) INTO v_rows FROM `crp-dev.d.STG_TMP`;\n"
+            "END;"
+        ),
+    }))
+
+    deps = tables["sp_probe"]["dependencies"]
+    assert any("STG_TMP" in d for d in deps), f"lost the read: {list(deps)}"

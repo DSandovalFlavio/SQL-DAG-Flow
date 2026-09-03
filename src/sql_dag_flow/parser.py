@@ -140,6 +140,98 @@ def _extract_calls(sql_text):
     return [c.strip("`") for c in _CALL_RE.findall(sql_text or "")]
 
 
+# BigQuery scripting assigns query results into variables with
+# `SELECT ... INTO v1, v2 FROM t`. sqlglot has no such construct and rejects
+# the statement, so the table behind it was lost. The INTO clause carries no
+# lineage — only the FROM does — so it is dropped before parsing. Matching
+# requires a plain identifier list followed directly by FROM, which never
+# matches `INSERT INTO <table> ...`.
+_SELECT_INTO_RE = re.compile(
+    r"\sINTO\s+(?:\w+\s*,\s*)*\w+\s+(?=FROM\b)", re.IGNORECASE
+)
+
+
+def _strip_select_into(sql_text):
+    """Remove `INTO var1, var2` from a SELECT ... INTO ... FROM statement."""
+    return _SELECT_INTO_RE.sub(" ", sql_text or "")
+
+
+def _split_statements(sql_text):
+    """Split SQL on semicolons that are not inside a string, backtick or comment.
+
+    Used to salvage a procedure body statement by statement: BigQuery scripting
+    (IF/THEN, RAISE, DECLARE ...) contains plenty sqlglot cannot model, and a
+    single one of those used to discard every statement in the body, including
+    the INSERTs and DELETEs that carry the real lineage.
+    """
+    statements, current = [], []
+    i, n, quote = 0, len(sql_text or ""), None
+    while i < n:
+        ch = sql_text[i]
+        nxt = sql_text[i + 1] if i + 1 < n else ""
+        if quote:
+            current.append(ch)
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in ("'", '"', "`"):
+            quote = ch
+            current.append(ch)
+            i += 1
+            continue
+        if ch == "-" and nxt == "-":
+            while i < n and sql_text[i] != "\n":
+                current.append(sql_text[i])
+                i += 1
+            continue
+        if ch == "/" and nxt == "*":
+            while i < n and not (sql_text[i] == "*" and i + 1 < n and sql_text[i + 1] == "/"):
+                current.append(sql_text[i])
+                i += 1
+            i += 2
+            continue
+        if ch == ";":
+            statements.append("".join(current))
+            current = []
+            i += 1
+            continue
+        current.append(ch)
+        i += 1
+    statements.append("".join(current))
+    return [s for s in (x.strip() for x in statements) if s]
+
+
+def _parse_each(sql_text, dialect):
+    """Parse statements individually, keeping whatever sqlglot can understand."""
+    parsed = []
+    for chunk in _split_statements(sql_text):
+        try:
+            expression = sqlglot.parse_one(_strip_select_into(chunk), read=dialect)
+        except Exception:
+            continue
+        if expression is not None:
+            parsed.append(expression)
+    return parsed
+
+
+def _procedure_shell(sql_text):
+    """A procedure reduced to its signature with a trivial body.
+
+    BigQuery scripting (SELECT ... INTO, IF/THEN, RAISE) lives inside the body
+    and regularly defeats sqlglot. Parsing just the shell still yields the
+    procedure's name and type, so it appears as a real node instead of an
+    "unknown" with a syntax error; its body is mined for dependencies
+    separately by _collect_statements.
+    """
+    if not sql_text or not re.search(r"CREATE(.*?)PROCEDURE", sql_text, re.IGNORECASE | re.DOTALL):
+        return None
+    match = re.search(r"BEGIN", sql_text, re.IGNORECASE)
+    if not match:
+        return None
+    return sql_text[: match.start()].rstrip().rstrip(";") + " BEGIN SELECT 1; END"
+
+
 def _statement_write_target(statement):
     """The table a statement writes to, with the operation that writes it."""
     target, op = None, None
@@ -168,16 +260,17 @@ def _collect_statements(sql_content, dialect):
     procedure, the statements inside its body."""
     statements = []
     try:
-        statements = [s for s in sqlglot.parse(sql_content, read=dialect) if s is not None]
+        statements = [s for s in sqlglot.parse(_strip_select_into(sql_content), read=dialect) if s is not None]
     except Exception:
-        statements = []
+        # One unparseable statement must not cost us the rest of the file.
+        statements = _parse_each(sql_content, dialect)
 
     body = _extract_procedure_body(sql_content)
     if body:
         try:
-            statements += [s for s in sqlglot.parse(body, read=dialect) if s is not None]
+            statements += [s for s in sqlglot.parse(_strip_select_into(body), read=dialect) if s is not None]
         except Exception:
-            pass
+            statements += _parse_each(body, dialect)
     return statements
 
 
@@ -521,11 +614,19 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                     try:
                         parsed = sqlglot.parse_one(sql_for_parsing, read=dialect)
                     except sqlglot.errors.ParseError:
-                        normalized = _normalize_procedure_signature(sql_content)
-                        if normalized == sql_content:
-                            raise
-                        parsed = sqlglot.parse_one(normalized, read=dialect)
-                        sql_for_parsing = normalized
+                        # 1st retry: strip OUT/INOUT/IN from the signature.
+                        sql_for_parsing = _normalize_procedure_signature(sql_content)
+                        try:
+                            parsed = sqlglot.parse_one(sql_for_parsing, read=dialect)
+                        except sqlglot.errors.ParseError:
+                            # 2nd retry: the body uses scripting sqlglot cannot
+                            # model. Parse the signature alone so the procedure
+                            # still becomes a proper node; _collect_statements
+                            # mines the real body for dependencies.
+                            shell = _procedure_shell(sql_for_parsing)
+                            if shell is None:
+                                raise
+                            parsed = sqlglot.parse_one(shell, read=dialect)
                     
                     # Detect Node Type (table, view or stored procedure)
                     node_type = "table" # default
