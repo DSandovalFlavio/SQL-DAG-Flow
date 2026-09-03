@@ -48,6 +48,7 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
     *   Powered by **ELK (Eclipse Layout Kernel)**.
     *   Minimizes edge crossings and optimizes flow direction.
     *   Intelligent "Port" handling for cleaner connections.
+*   **Standalone App Window (New in v0.9.3 🪟)**: Launches in its own window — no tabs, no address bar, its own taskbar entry — by using the app mode of an installed Chromium browser (Chrome, Edge or Brave). It reads as an application rather than a page you left open. No extra dependency and nothing to install; if no such browser is found it quietly falls back to a normal tab. Use `--tab` to force the classic behaviour.
 *   **Startup Configuration Selector**: Instantly resume previous sessions by selecting any `.json` configuration file found in your project directory upon launching the app.
 
 ### 🎮 Interactive Graph
@@ -133,7 +134,7 @@ Install easily via `pip`:
 pip install sql-dag-flow
 ```
 
-To update to the latest version (**v0.9.2**):
+To update to the latest version (**v0.9.3**):
 
 ```bash
 pip install --upgrade sql-dag-flow
@@ -153,12 +154,15 @@ sql-dag-flow
 
 # Analyze a specific SQL project
 sql-dag-flow /path/to/my/dbt_project
+
+# Open in a normal browser tab instead of a standalone window
+sql-dag-flow --tab
 ```
 
 ### 2. Check your version
 
 ```bash
-sql-dag-flow --version      # -> sql-dag-flow 0.9.2
+sql-dag-flow --version      # -> sql-dag-flow 0.9.3
 ```
 
 The version is also shown in the bottom-right corner of the app, so you can always tell which build you are looking at. It is read from the installed package metadata, so it can never drift from the release.

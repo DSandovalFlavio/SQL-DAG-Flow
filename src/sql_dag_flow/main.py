@@ -622,6 +622,67 @@ if os.path.exists(STATIC_DIR):
         response.headers["Expires"] = "0"
         return response
 
+# ===== Standalone app window =====
+# Chromium browsers accept --app=<url>, which opens a window with no tabs and no
+# address bar that gets its own taskbar entry. That turns the tool into
+# something that reads as an application rather than "a page in my browser",
+# without adding a single dependency or a packaging step.
+
+def _chromium_candidates():
+    """Likely Chromium-family executables for this platform, best first."""
+    if sys.platform == "win32":
+        roots = [
+            os.environ.get("PROGRAMFILES", ""),
+            os.environ.get("PROGRAMFILES(X86)", ""),
+            os.environ.get("LOCALAPPDATA", ""),
+        ]
+        relative = [
+            ("Google", "Chrome", "Application", "chrome.exe"),
+            ("Microsoft", "Edge", "Application", "msedge.exe"),
+            ("BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
+        ]
+        return [os.path.join(root, *parts)
+                for root in roots if root
+                for parts in relative]
+
+    if sys.platform == "darwin":
+        return [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+            "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+        ]
+
+    return [
+        shutil.which(name) for name in
+        ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser",
+         "microsoft-edge", "brave-browser")
+    ]
+
+
+def _find_app_browser():
+    """First Chromium-family browser actually present, or None."""
+    for candidate in _chromium_candidates():
+        if candidate and os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+def _open_app_window(url):
+    """Open `url` as a standalone window. Returns False if that isn't possible."""
+    browser = _find_app_browser()
+    if not browser:
+        return False
+    try:
+        subprocess.Popen(
+            [browser, "--app=" + url, "--window-size=1500,950"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except Exception:
+        return False
+
+
 def _is_port_available(port):
     """Check if a port is available by attempting to bind to it."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -651,6 +712,8 @@ def start():
     parser.add_argument('path', nargs='?', default=None, help='Path to SQL project folder')
     parser.add_argument('--port', '-p', type=int, default=8000, help='Port to run the server on (default: 8000)')
     parser.add_argument('--version', '-V', action='version', version=f'sql-dag-flow {__version__}')
+    parser.add_argument('--tab', action='store_true',
+                        help='Open in a normal browser tab instead of a standalone app window')
     
     # Use parse_known_args to be tolerant of unexpected args
     args, unknown = parser.parse_known_args()
@@ -680,10 +743,16 @@ def start():
         print(f"Port {requested_port} is in use. Using port {port} instead.")
     else:
         print(f"Starting server on port {port}")
+    if not args.tab and _find_app_browser():
+        print("Opening in a standalone app window (use --tab for a browser tab)")
 
     def open_browser():
         time.sleep(1.5)
-        webbrowser.open(f"http://localhost:{port}")
+        url = f"http://localhost:{port}"
+        # Prefer a standalone app window; fall back to a normal browser tab when
+        # no Chromium-family browser is installed or the user asked for one.
+        if args.tab or not _open_app_window(url):
+            webbrowser.open(url)
 
     threading.Thread(target=open_browser, daemon=True).start()
     
