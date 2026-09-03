@@ -1,5 +1,6 @@
 import React, { memo } from 'react';
 import { Handle, Position, NodeToolbar } from '@xyflow/react';
+import { nodeColor } from './nodeColors';
 import { Database, Table, FileText, Layers, Eye, Globe, EyeOff, FolderMinus, ScanEye, MousePointerClick, Maximize2, Minimize2, AlertTriangle, Cog } from 'lucide-react';
 
 const CustomNode = ({ id, data }) => {
@@ -24,30 +25,9 @@ const CustomNode = ({ id, data }) => {
         }
     };
 
-    const getGradient = (layer) => {
-        const palette = data.palette || 'standard';
-
-        const colors = {
-            standard: { bronze: '#8B4513', silver: '#708090', gold: '#DAA520', external: '#C06430', cte: '#E91E63', other: '#4CA1AF', default: '#2F4F4F' },
-            vivid: { bronze: '#D4654A', silver: '#4A9CC7', gold: '#E09E3A', external: '#D47A3A', cte: '#C45B8C', other: '#3A9E98', default: '#7B6DB5' },
-            pastel: { bronze: '#DCC1B0', silver: '#B8C5D0', gold: '#F0E4B8', external: '#E8D0A8', cte: '#DAAFC0', other: '#A8D0D8', default: '#C8B8D8' },
-            linear: { bronze: '#B08968', silver: '#8E99A4', gold: '#D4A843', external: '#CC8B5E', cte: '#C77092', other: '#6B9DAD', default: '#7A8B8B' }
-        };
-
-        const selectedPalette = colors[palette] || colors.standard;
-
-        switch (layer) {
-            case 'bronze': return selectedPalette.bronze;
-            case 'silver': return selectedPalette.silver;
-            case 'gold': return selectedPalette.gold;
-            case 'external': return selectedPalette.external;
-            case 'cte': return selectedPalette.cte;
-            case 'other': return selectedPalette.other;
-            default: return selectedPalette.default;
-        }
-    };
-
-    const color = getGradient(layer);
+    // Colour comes from the shared table: procedures get their own so they
+    // never read as a dataset, everything else follows its medallion layer.
+    const color = nodeColor(layer, details?.type, data.palette || 'standard');
 
     // Determine Text Color: Dark for Pastel+Full, White otherwise (unless minimal)
     let textColor = 'white';
@@ -79,11 +59,13 @@ const CustomNode = ({ id, data }) => {
     // Dynamic Styles
     const containerStyle = styleMode === 'full' ? {
         background: color,
-        border: isView ? '1px dashed rgba(255,255,255,0.3)' : '1px solid rgba(255,255,255,0.08)',
+        border: isProcedure ? '2px double rgba(255,255,255,0.55)'
+            : isView ? '1px dashed rgba(255,255,255,0.3)' : '1px solid rgba(255,255,255,0.08)',
         color: textColor
     } : {
         background: 'var(--surface-elevated)',
-        border: isView ? `2px dashed ${color}` : `2px solid ${color}`,
+        border: isProcedure ? `3px double ${color}`
+            : isView ? `2px dashed ${color}` : `2px solid ${color}`,
         color: textColor
     };
 

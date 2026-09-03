@@ -7,6 +7,7 @@ import { toPng, toSvg } from 'html-to-image';
 import { fetchGraph, saveGraph, loadGraphState, setPath, getPath, scanFolders, fetchFilteredGraph, moveFile, exportDataDictionary, fetchConfigFiles, fetchScopedGraph, scanNewModels, fetchGitChanges, fetchVersion } from './api';
 import './index.css';
 import CustomNode from './CustomNode';
+import { PROCEDURE_COLORS } from './nodeColors';
 import AnnotationNode from './AnnotationNode';
 import Sidebar from './Sidebar';
 import DetailsPanel from './DetailsPanel';
@@ -2213,6 +2214,7 @@ const Flow = () => {
             zoomable
             style={{ background: 'var(--minimap-bg)' }}
             nodeColor={(n) => {
+              if (n.data?.details?.type === 'procedure') return PROCEDURE_COLORS.standard;
               if (n.data.layer === 'bronze') return '#A65D29';
               if (n.data.layer === 'silver') return '#BCC6D9';
               if (n.data.layer === 'gold') return '#FFD700';

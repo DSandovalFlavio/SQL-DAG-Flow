@@ -1,3 +1,4 @@
+import { PROCEDURE_COLORS } from './nodeColors';
 import React, { useState, useMemo } from 'react';
 import { Eye, EyeOff, Search, X, ChevronDown, ChevronRight, Database, Globe, FileText, FolderTree, Layers, Code } from 'lucide-react';
 
@@ -93,6 +94,13 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
         bronze: '#cd7f32', silver: '#708090', gold: '#FFD700',
         other: '#4CA1AF', external: '#ff9f1c', cte: '#E91E63'
     };
+    // Procedures are logic, not datasets — same reason CTEs and externals have
+    // their own colour. Their medallion layer still drives the grouping.
+    const dotColor = (node) => (
+        node.data?.details?.type === 'procedure'
+            ? PROCEDURE_COLORS.standard
+            : layerColors[node.data.layer] || '#888'
+    );
 
     const renderNodeItem = (node) => {
         const isHidden = hiddenNodeIds.includes(node.id);
@@ -117,7 +125,7 @@ const Sidebar = ({ nodes, hiddenNodeIds, toggleNodeVisibility, onClose, theme, o
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', flex: 1 }}>
                         <div style={{
                             width: 6, height: 6, borderRadius: '50%',
-                            background: layerColors[node.data.layer] || '#888',
+                            background: dotColor(node),
                             flexShrink: 0
                         }} />
                         <span
