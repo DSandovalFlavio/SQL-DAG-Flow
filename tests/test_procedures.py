@@ -333,3 +333,56 @@ def test_select_into_is_still_read_as_a_dependency(project):
 
     deps = tables["sp_probe"]["dependencies"]
     assert any("STG_TMP" in d for d in deps), f"lost the read: {list(deps)}"
+
+
+# --------------------------------------------------------------------------
+# The source text decides what is a procedure, not the AST
+# --------------------------------------------------------------------------
+
+def test_procedure_detected_even_when_the_ast_gives_up(project, monkeypatch):
+    """If sqlglot cannot build anything useful, the declaration still stands."""
+    import sqlglot
+
+    from sql_dag_flow import parser as parser_module
+
+    def refuse(*args, **kwargs):
+        raise sqlglot.errors.ParseError("nope")
+
+    root = project({"ops/sp_x.sql": (
+        "CREATE OR REPLACE PROCEDURE `proj.ops.sp_x`(OUT n INT64)\n"
+        "BEGIN\n  INSERT INTO `proj.d.t` SELECT 1;\nEND;"
+    )})
+    monkeypatch.setattr(parser_module.sqlglot, "parse_one", refuse)
+
+    tables = parse_sql_files(root)
+    # The file could not be parsed at all, so it is an error node — but it must
+    # never be silently presented as a table.
+    assert tables["sp_x"]["type"] != "table"
+
+
+def test_keyword_inside_a_comment_does_not_make_a_procedure(project):
+    root = project({"models/t.sql": (
+        "-- This model replaces the old CREATE OR REPLACE PROCEDURE approach\n"
+        "CREATE TABLE `proj.d.t` AS SELECT 1 AS id;"
+    )})
+
+    assert parse_sql_files(root)["t"]["type"] == "table"
+
+
+def test_procedure_name_comes_from_the_declaration(project):
+    """Not from the filename, which often differs."""
+    root = project({"ops/whatever_filename.sql": (
+        "CREATE OR REPLACE PROCEDURE `crp-dev-mkt.platdig.sp_reload_stats`(OUT n INT64)\n"
+        "BEGIN\n  SELECT 1;\nEND;"
+    )})
+
+    proc = parse_sql_files(root)["whatever_filename"]
+    assert proc["label"] == "sp_reload_stats"
+    assert proc["dataset"] == "platdig"
+    assert proc["project"] == "crp-dev-mkt"
+    assert proc["fqn"] == "crp-dev-mkt.platdig.sp_reload_stats"
+
+
+def test_create_procedure_without_or_replace(project):
+    root = project({"ops/sp_y.sql": "CREATE PROCEDURE `proj.ops.sp_y`() BEGIN SELECT 1; END;"})
+    assert parse_sql_files(root)["sp_y"]["type"] == "procedure"

@@ -115,6 +115,43 @@ def _normalize_procedure_signature(sql_text):
     return _PROC_SIGNATURE_RE.sub(strip_modes, sql_text or "", count=1)
 
 
+# The source text is the authority on whether a file declares a procedure.
+# sqlglot may parse a procedure into a Create, degrade it to an opaque Command,
+# or reject it outright depending on what the body contains — so deciding the
+# node type from the AST made an obvious fact depend on parser luck.
+_COMMENT_RE = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
+_PROCEDURE_DECL_RE = re.compile(
+    r"\bCREATE\b(?:\s+OR\s+REPLACE)?(?:\s+\w+)*?\s+PROCEDURE\b", re.IGNORECASE
+)
+_PROCEDURE_NAME_RE = re.compile(
+    r"\bPROCEDURE\s+(`[^`]+`|[\w.\-]+)", re.IGNORECASE
+)
+
+
+def _strip_sql_comments(sql_text):
+    """Blank out comments so keywords mentioned in prose can't fool a match."""
+    return _COMMENT_RE.sub(" ", sql_text or "")
+
+
+def _looks_like_procedure(sql_text):
+    """True when the file declares a stored procedure, comments excluded."""
+    return bool(_PROCEDURE_DECL_RE.search(_strip_sql_comments(sql_text)))
+
+
+def _procedure_name_parts(sql_text):
+    """(project, dataset, name) as declared after PROCEDURE, or None."""
+    match = _PROCEDURE_NAME_RE.search(_strip_sql_comments(sql_text))
+    if not match:
+        return None
+    parts = [p for p in match.group(1).strip("`").split(".") if p]
+    if not parts:
+        return None
+    name = parts[-1]
+    dataset = parts[-2] if len(parts) >= 2 else "default"
+    project = parts[-3] if len(parts) >= 3 else "default"
+    return project, dataset, name
+
+
 def _qualified_table_name(table_exp):
     """'catalog.db.name' for a sqlglot Table, as far as it is qualified."""
     if not isinstance(table_exp, exp.Table):
@@ -635,6 +672,13 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                             node_type = "view"
                         elif parsed.kind == "PROCEDURE":
                             node_type = "procedure"
+
+                    # The source text has the final say: sqlglot may hand back a
+                    # Create, an opaque Command or nothing at all depending on
+                    # what the body contains, and none of that changes the fact
+                    # that the file declares a procedure.
+                    if _looks_like_procedure(sql_content):
+                        node_type = "procedure"
                     
                     # Attempt to extract Project and Dataset from the CREATE statement
                     # pattern: project.dataset.table or dataset.table
@@ -681,6 +725,18 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                          if parent_dir.lower() not in ["bronze", "bronce", "silver", "gold", "other"] and dataset == "default":
                              dataset = parent_dir
                     
+                    # Take the procedure's name straight from its declaration
+                    # rather than from whatever the AST managed to build.
+                    if node_type == "procedure":
+                        declared = _procedure_name_parts(sql_content)
+                        if declared:
+                            proc_project, proc_dataset, proc_name = declared
+                            target_table_name = proc_name
+                            if proc_dataset != "default":
+                                dataset = proc_dataset
+                            if proc_project != "default":
+                                project = proc_project
+
                     dependencies = {}  # dep_name -> dep_type
                     
                     # 1. Identify CTEs defined in the query and their internal dependencies
