@@ -21,7 +21,7 @@ CACHE_DIR = ".sqldagflow"
 CACHE_FILENAME = "cache.json"
 # Bumped whenever the shape of a cached entry changes, so stale caches from an
 # older version are ignored instead of feeding wrong data into the graph.
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 
 
 # ===== Node identity =====
@@ -878,8 +878,12 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                         "content": sql_content
                     }
                 
-                # ===== Save to cache after parsing (success or error) =====
-                if node_id in tables:
+                # ===== Save to cache after a SUCCESSFUL parse =====
+                # Failures are deliberately not cached. The cache key is the
+                # file's mtime+size, so a file that failed to parse would keep
+                # serving that failure even after the parser learns to handle it
+                # — the improvement would silently never reach the user.
+                if node_id in tables and not tables[node_id].get("error"):
                     file_key = _file_cache_key(filepath)
                     if file_key:
                         # Store a cache-safe copy (no sets, convert to lists)

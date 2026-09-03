@@ -206,3 +206,56 @@ def test_real_procedure_lineage(project):
     assert ("sp_reload_stats", "STG_MKT_STATS_TRN") in pairs
     # the written table must not also be counted as a source
     assert ("STG_MKT_STATS_TRN", "sp_reload_stats") not in pairs
+
+
+def test_a_stale_cache_cannot_hide_a_parser_fix(project):
+    """A file that failed to parse must be retried, not served from cache.
+
+    The cache key is the file's mtime+size, so a procedure that failed under an
+    older parser would keep returning that failure forever — a fix would appear
+    to do nothing until the user deleted .sqldagflow by hand.
+    """
+    import json
+    import os
+
+    from sql_dag_flow.parser import _file_cache_key
+
+    root = project({"sp.sql": REAL_SP})
+    path = os.path.join(root, "sp.sql")
+
+    # Simulate what an older, broken parser left behind.
+    os.makedirs(os.path.join(root, ".sqldagflow"), exist_ok=True)
+    with open(os.path.join(root, ".sqldagflow", "cache.json"), "w", encoding="utf-8") as f:
+        json.dump({path: {
+            "v": 2,
+            "cache_key": _file_cache_key(path),
+            "dialect": "bigquery",
+            "data": {
+                "id": "sp", "label": "sp", "fqn": "sp", "layer": "other",
+                "type": "unknown", "project": "n/a", "dataset": "n/a",
+                "path": path, "dependencies": {},
+                "error": "Expecting ). Line 3, Col: 20.",
+                "syntax_warnings": [{"description": "Expecting )", "line": 3, "col": 20}],
+                "content": REAL_SP,
+            },
+        }}, f)
+
+    tables = parse_sql_files(root)
+
+    assert tables["sp"]["type"] == "procedure"
+    assert not tables["sp"].get("syntax_warnings")
+
+
+def test_failed_parses_are_not_written_to_the_cache(project):
+    import json
+    import os
+
+    root = project({"broken.sql": "CREATE TABLE ((( FROM WHERE;"})
+    parse_sql_files(root)
+
+    cache_path = os.path.join(root, ".sqldagflow", "cache.json")
+    cached = json.load(open(cache_path, encoding="utf-8")) if os.path.exists(cache_path) else {}
+
+    assert not any("broken.sql" in key for key in cached), (
+        "a failed parse was cached and would survive a parser fix"
+    )
