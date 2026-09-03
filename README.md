@@ -38,7 +38,7 @@ Specially optimized for the **Medallion Architecture** (Bronze, Silver, Gold) an
 *   **Selective Processing (New in v0.6.0 🚀)**: Dramatically improves performance on large projects (10x-20x) by only analyzing visible nodes for complex features like Qualify Columns and Column-Level Lineage.
 *   **Scoped Views (New in v0.7.0 🎯)**: A saved diagram is now a *scope*. Reopening or refreshing it only re-parses the models actually on your canvas, so parsing stays proportional to your view instead of your whole project — and newly added `.sql` files never flood a curated architecture.
 *   **Scan New Models (New in v0.7.0 🔎)**: A pure filesystem diff (zero SQL parsing, instant on huge projects) that surfaces `.sql` files not yet on your canvas, so you pull them in on demand instead of re-indexing everything.
-*   **Stored Procedures (New in v0.9.0 ⚙️)**: Full support for `CREATE PROCEDURE` files. The body between `BEGIN ... END` is parsed statement by statement, so a procedure shows both what it **reads** (`FROM`/`JOIN`) and what it **writes** (`INSERT`, `MERGE`, `UPDATE`, `DELETE`) — writes become outgoing edges, placing the procedure between its inputs and the tables it produces. `CALL` between procedures is tracked too. Multi-statement scripts benefit as well: every statement is inspected, not just the first. Procedures are also **visually distinct**: their own violet colour, a gear icon and a `(PROC)` badge, so they never read as a table — while still keeping their medallion layer for grouping and stats.
+*   **Stored Procedures (New in v0.9.0 ⚙️)**: Full support for `CREATE PROCEDURE` files. The body between `BEGIN ... END` is parsed statement by statement, so a procedure shows both what it **reads** (`FROM`/`JOIN`) and what it **writes** (`INSERT`, `MERGE`, `UPDATE`, `DELETE`) — writes become outgoing edges, placing the procedure between its inputs and the tables it produces. `CALL` between procedures is tracked too. Multi-statement scripts benefit as well: every statement is inspected, not just the first. **v0.9.4** makes the detection itself reliable: whether a file is a procedure is now read from the `CREATE ... PROCEDURE` declaration in the source (comments excluded), not inferred from the parse tree — sqlglot can hand back a `Create`, an opaque `Command`, or nothing at all depending on the body, and in the cases where it did not produce a `Create` the procedure was shown as an ordinary table. Its qualified name is read from the declaration too. Procedures are also **visually distinct**: their own violet colour, a gear icon and a `(PROC)` badge, so they never read as a table — while still keeping their medallion layer for grouping and stats.
 *   **Real BigQuery Procedure Signatures (New in v0.9.1 🔧)**: `OUT` / `INOUT` parameter modes are rejected by the SQL parser and used to fail the *entire* file - a valid procedure showed a bogus `Expecting )` error and lost all of its lineage. Signatures are now normalised before parsing, so procedures with output parameters, backtick-quoted names and dashed project ids work as expected. **v0.9.2** makes procedures resilient to BigQuery *scripting*: `DECLARE`, `SET`, `IF ... END IF`, `RAISE` and `SELECT ... INTO variables` are constructs the SQL parser cannot model, and a single one of them used to discard the entire procedure body along with all its lineage. The body is now parsed statement by statement, so the `INSERT`s and `DELETE`s that carry the lineage survive whatever sits between them. Parse failures are also no longer written to the disk cache, so a project scanned by an older version picks up parser improvements automatically instead of replaying a stale error.
 *   **20x Faster Column Analysis (New in v0.9.0 ⚡)**: The `qualify_columns` and column-lineage passes used to receive the *entire* project's schema for every model, and re-parse a model once per column. They now get only the tables a model actually reads, and reuse a single parsed AST. On a 300-model project the visible-node analysis went from **457 ms to 23 ms per model** — a full-project run that never finished within two minutes now takes under 7 seconds. The same fix repaired a silent bug: computed columns stored an expression in the type slot, which made `qualify_columns` raise and discard its own work on **every** model. It now runs successfully across the board.
 *   **Medallion Architecture Support**: Automatically categorizes and colors nodes based on folder structure (Bronze, Silver, Gold).
@@ -134,7 +134,7 @@ Install easily via `pip`:
 pip install sql-dag-flow
 ```
 
-To update to the latest version (**v0.9.3**):
+To update to the latest version (**v0.9.4**):
 
 ```bash
 pip install --upgrade sql-dag-flow
@@ -162,7 +162,7 @@ sql-dag-flow --tab
 ### 2. Check your version
 
 ```bash
-sql-dag-flow --version      # -> sql-dag-flow 0.9.3
+sql-dag-flow --version      # -> sql-dag-flow 0.9.4
 ```
 
 The version is also shown in the bottom-right corner of the app, so you can always tell which build you are looking at. It is read from the installed package metadata, so it can never drift from the release.
