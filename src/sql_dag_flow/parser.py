@@ -161,6 +161,29 @@ def _collect_statements(sql_content, dialect):
     return statements
 
 
+# extract_output_columns stores an expression's SQL text in the "type" slot for
+# computed columns ("column", "expression", or raw SQL). Those are not data
+# types, and sqlglot raises while trying to parse them as one — which silently
+# threw away the entire qualify_columns pass. Anything we can't vouch for is
+# reported as UNKNOWN, which sqlglot accepts.
+_KNOWN_SQL_TYPES = {
+    "INT", "INTEGER", "SMALLINT", "TINYINT", "BIGINT", "INT64",
+    "FLOAT", "FLOAT64", "DOUBLE", "REAL", "DECIMAL", "NUMERIC", "BIGNUMERIC",
+    "VARCHAR", "CHAR", "STRING", "TEXT", "BYTES", "BINARY", "VARBINARY",
+    "BOOLEAN", "BOOL", "DATE", "DATETIME", "TIME", "TIMESTAMP", "TIMESTAMPTZ",
+    "INTERVAL", "JSON", "ARRAY", "STRUCT", "RECORD", "GEOGRAPHY", "UUID",
+    "UNKNOWN",
+}
+
+
+def _sql_type_or_fallback(raw_type):
+    """Keep a real SQL type, otherwise fall back to UNKNOWN."""
+    if not raw_type:
+        return "UNKNOWN"
+    base = str(raw_type).split("(")[0].strip().upper()
+    return base if base in _KNOWN_SQL_TYPES else "UNKNOWN"
+
+
 def _extract_column_references(ast, target_name):
     """Map each source table referenced by the query to the columns used from it.
 
@@ -853,25 +876,47 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
     _save_cache(directory, cache)
     
     # ===== Second Pass: Qualify Columns & Column Lineage =====
-    # Build a global schema dict for qualify_columns and lineage
-    # (schema building is always done for ALL tables — it's fast)
-    global_schema = {}  # {dataset: {table: {col: type}}}
+    # These two sqlglot passes dominate runtime, and both scale with the size of
+    # the schema handed to them. Feeding every model the whole project's schema
+    # cost ~440 ms per model; giving each one only the tables it actually reads
+    # brings that to ~19 ms. Hence a per-model schema instead of a global one.
+    columns_by_label = {}   # label -> {column: sql type}
+    dataset_by_label = {}   # label -> declared dataset
     for tid, tdata in tables.items():
         schema_cols = tdata.get("schema", [])
         if not schema_cols:
             continue
-        ds = tdata.get("dataset", "default")
         label = tdata.get("label", tid)
-        if ds not in global_schema:
-            global_schema[ds] = {}
-        col_dict = {}
-        for c in schema_cols:
-            col_dict[c["name"]] = c.get("type", "UNKNOWN")
-        global_schema[ds][label] = col_dict
-        # Also add without dataset prefix for simpler lookups
-        if "default" not in global_schema:
-            global_schema["default"] = {}
-        global_schema["default"][label] = col_dict
+        columns_by_label[label] = {
+            c["name"]: _sql_type_or_fallback(c.get("type"))
+            for c in schema_cols
+        }
+        dataset_by_label[label] = tdata.get("dataset", "default")
+
+    def _schema_for(tdata, tid):
+        """Schema limited to what this model reads, plus itself.
+
+        sqlglot resolves columns against every table it is given, so a schema
+        scoped to the model's own dependencies is both far cheaper and no less
+        correct — a model can only reference what it depends on.
+        """
+        wanted = {tdata.get("label", tid)}
+        deps = tdata.get("dependencies") or {}
+        for dep in (deps.keys() if isinstance(deps, dict) else deps):
+            if not dep.startswith("cte:"):
+                wanted.add(dep.split(".")[-1])
+        for written in (tdata.get("writes") or {}):
+            wanted.add(written.split(".")[-1])
+
+        scoped = {}
+        for label in wanted:
+            cols = columns_by_label.get(label)
+            if not cols:
+                continue
+            ds = dataset_by_label.get(label, "default")
+            scoped.setdefault(ds, {})[label] = cols
+            scoped.setdefault("default", {})[label] = cols
+        return scoped
     
     # Re-extract column_references using qualify_columns for precision
     # Protected with per-table time budget to prevent hanging on large projects
@@ -891,9 +936,9 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
         try:
             parsed = sqlglot.parse_one(tdata["content"], read=dialect)
             
-            # Try to qualify columns using the global schema (with 2s budget)
+            # Qualify against this model's own dependencies only (with 2s budget)
             try:
-                qualified_ast = sqlglot_qualify_columns(parsed.copy(), schema=global_schema, dialect=dialect)
+                qualified_ast = sqlglot_qualify_columns(parsed.copy(), schema=_schema_for(tdata, tid), dialect=dialect)
             except Exception:
                 qualified_ast = parsed  # Fallback to unqualified
             
@@ -948,7 +993,15 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
             
             column_lineage = {}  # col_name -> [{source_table, source_column, transform}]
             sql_content = tdata["content"]
-            
+
+            # lineage() accepts an AST. Passing the raw string made it re-parse
+            # the entire model once per column; parse once and reuse instead.
+            try:
+                lineage_ast = sqlglot.parse_one(sql_content, read=dialect)
+            except Exception:
+                continue
+            lineage_schema = _schema_for(tdata, tid)
+
             cols_processed = 0
             for col_info in schema_cols:
                 # Check time budget
@@ -964,8 +1017,8 @@ def parse_sql_files(directory, allowed_subfolders=None, dialect="bigquery", visi
                 try:
                     from sqlglot.lineage import lineage as sqlglot_lineage
                     node = sqlglot_lineage(
-                        col_name, sql_content,
-                        schema=global_schema,
+                        col_name, lineage_ast.copy(),
+                        schema=lineage_schema,
                         dialect=dialect
                     )
                     sources = []
